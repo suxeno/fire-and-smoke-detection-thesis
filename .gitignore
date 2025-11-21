@@ -1,0 +1,205 @@
+# Python
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# PyTorch / Deep Learning
+# Model checkpoints (keep structure, ignore large files)
+outputs/*/checkpoint_*.pth
+outputs/*/model_*.pth
+outputs/*/*.pth
+!outputs/README.md
+
+# TensorBoard logs
+outputs/*/runs/
+outputs/*/tensorboard/
+runs/
+tensorboard/
+
+# Weights & Biases
+wandb/
+*.wandb
+
+# Dataset Files (Large Files)
+datasets/
+datasets_sample/
+
+# Output Files
+# Training outputs
+outputs/*/log.txt
+outputs/*/checkpoint_*.pth
+outputs/*/test_results.json
+outputs/*/test_results/
+outputs/detr_slic/*.pth
+outputs/detr_baseline/*.pth
+outputs/logs/*.log
+outputs/plots/*.png
+outputs/plots/*.pdf
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# Jupyter notebook outputs (optional - comment out if you want to keep outputs)
+# *.ipynb
+
+# IDE / Editor
+# VSCode
+.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# PyCharm
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# OS
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# Project Specific
+# Sample dataset CSV (regeneratable)
+datasets_sample/sampled_files.csv
+
+# ROCm cache
+.cache/
+*.rocm_cache
+
+# CUDA cache
+*.cuda_cache
+
+# Downloaded pretrained weights
+*.pth.tar
+pretrained/
+weights/
+checkpoints/
+
+# Visualization outputs
+visualizations/
+*.mp4
+*.avi
+*.gif
+
+# Experiment results
+experiments/
+results/
+
+# Data processing temp files
+*.pkl
+*.pickle
+*.npy
+*.npz
+
+# Keep Important Files
+# Keep these files even if they match above patterns
+!.gitignore
+!README.md
+!requirements.txt
+!LICENSE
+
+# Keep annotation files (small JSON files)
+!datasets/annotations/COCO/Annotations/*.json
+!datasets_sample/annotations/COCO/Annotations/*.json
+
+# Keep config files
+!configs/*.yaml
+!configs/*.yml
+
+# Keep version tracking
+!datasets/version.txt
+
+# Keep documentation
+!docs/
+!*.md
+
+# Keep example visualizations (if you have a few small ones)
+!examples/
+!assets/
