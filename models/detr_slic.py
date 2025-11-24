@@ -95,13 +95,19 @@ class DETRSlic(nn.Module):
         
         # Generate superpixels from original images
         images = samples.tensors  # (B, 3, H', W')
-        
-        # Resize images to match feature map size for superpixel generation
         B, C, H_feat, W_feat = src_proj.shape
-        images_resized = F.interpolate(images, size=(H_feat, W_feat), mode='bilinear', align_corners=False)
         
-        # Generate superpixels
-        superpixel_maps, num_superpixels = self.slic(images_resized)  # (B, H, W), (B,)
+        # Resizing to 300x300 for slic
+        slic_size = 300
+        images_for_slic = F.interpolate(images, size=(slic_size, slic_size), mode='bilinear', align_corners=False)
+        
+        # Run SLIC on resized images
+        superpixel_maps, num_superpixels = self.slic(images_for_slic)  # (B, slic_size, slic_size)
+        
+        # Resize superpixel maps to feature map size using nearest neighbor
+        superpixel_maps = superpixel_maps.float().unsqueeze(1)  # (B, 1, slic_size, slic_size)
+        superpixel_maps = F.interpolate(superpixel_maps, size=(H_feat, W_feat), mode='nearest')
+        superpixel_maps = superpixel_maps.squeeze(1).long()  # (B, H_feat, W_feat)
         
         # Pool features within superpixels
         superpixel_features, superpixel_mask = self.superpixel_pooling(
@@ -169,7 +175,12 @@ def build_detr_slic(args):
     """
     Build DETR-SLIC model with criterion and postprocessors.
     """
-    num_classes = 20 if args.dataset_file != 'coco' else 91
+    # Use args.num_classes if provided, otherwise default logic
+    if hasattr(args, 'num_classes'):
+        num_classes = args.num_classes
+    else:
+        num_classes = 20 if args.dataset_file != 'coco' else 91
+        
     device = torch.device(args.device)
     
     backbone = build_backbone(args)

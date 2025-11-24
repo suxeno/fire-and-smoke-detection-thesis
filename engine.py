@@ -8,6 +8,7 @@ import time
 from typing import Iterable
 
 import torch
+from tqdm import tqdm
 
 import util.misc as utils
 
@@ -30,9 +31,12 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     metric_logger.add_meter('class_error', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
     header = 'Epoch: [{}]'.format(epoch)
-    print_freq = 50  # Print every 50 iterations instead of 10
+    print_freq = 10000  # Reduce logging noise - only print at end
 
-    for samples, targets in metric_logger.log_every(data_loader, print_freq, header):
+    # Create progress bar
+    pbar = tqdm(data_loader, desc=header, leave=False)
+    
+    for samples, targets in pbar:
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
@@ -69,10 +73,18 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         metric_logger.update(loss_giou=loss_dict_reduced_scaled['loss_giou'])
         metric_logger.update(class_error=loss_dict_reduced['class_error'])
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+        
+        # Update progress bar with current loss
+        pbar.set_postfix({
+            'loss': f"{loss_value:.4f}",
+            'ce': f"{loss_dict_reduced_scaled['loss_ce'].item():.4f}",
+            'bbox': f"{loss_dict_reduced_scaled['loss_bbox'].item():.4f}",
+            'giou': f"{loss_dict_reduced_scaled['loss_giou'].item():.4f}"
+        })
     
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    print("Averaged stats:", metric_logger)
+    # Removed verbose print - will use clean logger in main.py
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 
@@ -99,10 +111,13 @@ def evaluate(model, criterion, postprocessors, data_loader, device, output_dir=N
     metric_logger.add_meter('class_error', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
     header = 'Val:' if 'val' in str(data_loader.dataset.ann_file).lower() else 'Test:'
 
+    # Create progress bar
+    pbar = tqdm(data_loader, desc=header, leave=False)
+    
     # Collect predictions for optional COCO evaluation
     coco_results = []
     
-    for samples, targets in metric_logger.log_every(data_loader, 50, header):  # Print every 50 iterations
+    for samples, targets in pbar:
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
@@ -118,11 +133,18 @@ def evaluate(model, criterion, postprocessors, data_loader, device, output_dir=N
                                       for k, v in loss_dict_reduced.items()}
         
         # Only track main metrics (not auxiliary losses)
-        metric_logger.update(loss=sum(loss_dict_reduced_scaled.values()))
+        current_loss = sum(loss_dict_reduced_scaled.values())
+        metric_logger.update(loss=current_loss)
         metric_logger.update(loss_ce=loss_dict_reduced_scaled['loss_ce'])
         metric_logger.update(loss_bbox=loss_dict_reduced_scaled['loss_bbox'])
         metric_logger.update(loss_giou=loss_dict_reduced_scaled['loss_giou'])
         metric_logger.update(class_error=loss_dict_reduced['class_error'])
+        
+        # Update progress bar
+        pbar.set_postfix({
+            'loss': f"{current_loss.item():.4f}",
+            'ce': f"{loss_dict_reduced_scaled['loss_ce'].item():.4f}"
+        })
 
         # Postprocess predictions
         orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
@@ -148,7 +170,7 @@ def evaluate(model, criterion, postprocessors, data_loader, device, output_dir=N
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    print("Averaged stats:", metric_logger)
+    # Removed verbose print - will use clean logger in main.py
     
     stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
     
@@ -160,25 +182,14 @@ def evaluate(model, criterion, postprocessors, data_loader, device, output_dir=N
                 coco_results
             )
             stats.update(coco_eval_stats)
-            
-            # Print formatted evaluation results
-            print("\n" + "="*80)
-            print("COCO Evaluation Results:")
-            print(f"  AP      (IoU=0.50:0.95): {coco_eval_stats.get('AP', 0):.4f}")
-            print(f"  mAP50   (IoU=0.50):      {coco_eval_stats.get('mAP50', 0):.4f}")
-            print(f"  AP75    (IoU=0.75):      {coco_eval_stats.get('AP75', 0):.4f}")
-            print(f"  Recall  (Overall):       {coco_eval_stats.get('Recall', 0):.4f}")
-            print()
-            print("Per-Class Metrics:")
-            # Display fire metrics if available
-            if 'Recall_fire' in coco_eval_stats:
-                print(f"  Fire    - AP: {coco_eval_stats.get('AP_fire', 0):.4f} | AP50: {coco_eval_stats.get('AP50_fire', 0):.4f} | Recall: {coco_eval_stats.get('Recall_fire', 0):.4f}")
-            # Display smoke metrics if available
-            if 'Recall_smoke' in coco_eval_stats:
-                print(f"  Smoke   - AP: {coco_eval_stats.get('AP_smoke', 0):.4f} | AP50: {coco_eval_stats.get('AP50_smoke', 0):.4f} | Recall: {coco_eval_stats.get('Recall_smoke', 0):.4f}")
-            print("="*80 + "\n")
+            # Removed verbose prints - will use clean logger in main.py
         except Exception as e:
             print(f"⚠ COCO evaluation failed: {e}")
+            # Add default metrics if COCO eval fails
+            stats.update({
+                'AP': 0.0, 'mAP50': 0.0, 'AP50': 0.0, 'AP75': 0.0,
+                'Recall': 0.0, 'AR_max100': 0.0
+            })
     
     return stats
 

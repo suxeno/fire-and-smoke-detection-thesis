@@ -1,5 +1,4 @@
 # DETR Baseline Configuration for Fire and Smoke Detection
-# Standard DETR for benchmark comparison with DETR-SLIC
 
 # Model Architecture
 model_name: 'detr_baseline'
@@ -47,8 +46,8 @@ weight_decay: 1.0e-4
 clip_max_norm: 0.1  # Gradient clipping
 
 # Learning rate schedule
-lr_drop: 200  # Epoch to drop learning rate
-epochs: 300  # Total training epochs
+lr_drop: 40  # Epoch to drop learning rate
+epochs: 50  # Total training epochs
 
 # Batch and workers
 batch_size: 2  # Batch size per GPU (baseline is more memory intensive)

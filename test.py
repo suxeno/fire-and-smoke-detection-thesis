@@ -95,13 +95,13 @@ def test_model(config_path, checkpoint_path, visualize=False, num_visualize=10, 
     
     device = torch.device(args.device)
     
-    print("\n" + "="*80)
-    print("DETR-SLIC TEST EVALUATION")
-    print("="*80)
-    print(f"Model: {args.model_name}")
+    print("\n" + "="*100)
+    print("DETR-SLIC TEST EVALUATION".center(100))
+    print("="*100)
+    print(f"Model:      {args.model_name}")
     print(f"Checkpoint: {checkpoint_path}")
-    print(f"Dataset: {args.data_path}")
-    print("="*80 + "\n")
+    print(f"Dataset:    {args.data_path}")
+    print("="*100 + "\n")
     
     # Build model
     print("Building model...")
@@ -117,13 +117,20 @@ def test_model(config_path, checkpoint_path, visualize=False, num_visualize=10, 
     print(f"✓ Loaded checkpoint from epoch {checkpoint.get('epoch', 'unknown')}")
     
     # Build test data loader
-    print("\nLoading test dataset...")
-    data_loader_test = build_data_loader('test', args)
-    print(f"Test samples: {len(data_loader_test.dataset)}")
+    print("\nLoading test datasets...")
+    test_categories = ['CV', 'UAV', 'RS']
+    data_loaders_test = {}
+    for cat in test_categories:
+        print(f"Building test loader for {cat}...")
+        data_loaders_test[cat] = build_data_loader('test', args, filter_category=cat)
     
     # Create output directory
     output_dir = Path(args.output_dir) / 'test_results'
     output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Logs directory
+    logs_dir = Path('outputs/logs')
+    logs_dir.mkdir(parents=True, exist_ok=True)
     
     if visualize:
         viz_dir = output_dir / 'visualizations'
@@ -131,45 +138,69 @@ def test_model(config_path, checkpoint_path, visualize=False, num_visualize=10, 
         print(f"Visualizations will be saved to: {viz_dir}")
     
     # Run evaluation
-    print("\n" + "="*80)
-    print("Running evaluation on test set...")
-    print("="*80)
+    print("\nRunning evaluation on test set...")
     
-    test_stats = evaluate(
-        model, criterion, postprocessors,
-        data_loader_test, device, str(output_dir)
-    )
+    all_test_stats = {}
     
-    # Print results
-    print("\n" + "="*80)
-    print("TEST RESULTS")
-    print("="*80)
+    for cat, loader in data_loaders_test.items():
+        print(f"\nTesting on {cat}...")
+        if len(loader.dataset) == 0:
+            print(f"⚠ No samples found for {cat}, skipping.")
+            continue
+            
+        test_stats = evaluate(
+            model, criterion, postprocessors,
+            loader, device, str(output_dir)
+        )
+        
+        # Store stats with category prefix
+        for k, v in test_stats.items():
+            all_test_stats[f'{cat}_{k}'] = v
+            
+        # Print results with clean formatting
+        print("\n" + "="*100)
+        print(f"TEST SET RESULTS ({cat})".center(100))
+        print("="*100)
+        
+        # Loss metrics
+        print(f"\n{'LOSS METRICS:':<20} Loss: {test_stats.get('loss', 0):.4f} | " +
+              f"Class Error: {test_stats.get('class_error', 0):.2f}%")
+        if test_stats.get('loss_ce') is not None:
+            print(f"{'':20} CE: {test_stats.get('loss_ce', 0):.4f} | " +
+                  f"BBox: {test_stats.get('loss_bbox', 0):.4f} | " +
+                  f"GIoU: {test_stats.get('loss_giou', 0):.4f}")
+        
+        # COCO metrics (if available)
+        if 'AP' in test_stats:
+            print(f"\n{'DETECTION METRICS:':<20} mAP: {test_stats.get('AP', 0):.4f} | " +
+                  f"mAP50: {test_stats.get('mAP50', test_stats.get('AP50', 0)):.4f} | " +
+                  f"Recall: {test_stats.get('Recall', 0):.4f}")
+            print(f"{'':20} AP75: {test_stats.get('AP75', 0):.4f} | " +
+                  f"AP_small: {test_stats.get('AP_small', 0):.4f} | " +
+                  f"AP_medium: {test_stats.get('AP_medium', 0):.4f} | " +
+                  f"AP_large: {test_stats.get('AP_large', 0):.4f}")
+            
+            # Per-class metrics
+            if 'AP_fire' in test_stats or 'AP_smoke' in test_stats:
+                print(f"\n{'PER-CLASS METRICS:':<20}")
+                if 'AP_fire' in test_stats:
+                    print(f"  {'Fire:':<18} AP: {test_stats.get('AP_fire', 0):.4f} | " +
+                          f"AP50: {test_stats.get('AP50_fire', 0):.4f} | " +
+                          f"Recall: {test_stats.get('Recall_fire', 0):.4f}")
+                if 'AP_smoke' in test_stats:
+                    print(f"  {'Smoke:':<18} AP: {test_stats.get('AP_smoke', 0):.4f} | " +
+                          f"AP50: {test_stats.get('AP50_smoke', 0):.4f} | " +
+                          f"Recall: {test_stats.get('Recall_smoke', 0):.4f}")
     
-    # Loss metrics
-    print("\nLoss Metrics:")
-    for k, v in test_stats.items():
-        if 'loss' in k or 'error' in k:
-            print(f"  {k}: {v:.4f}")
+    print("\n" + "="*100 + "\n")
     
-    # COCO metrics (if available)
-    if 'AP' in test_stats:
-        print("\nCOCO Detection Metrics:")
-        print(f"  AP (IoU=0.50:0.95): {test_stats['AP']:.4f}")
-        print(f"  AP50 (IoU=0.50):    {test_stats['AP50']:.4f}")
-        print(f"  AP75 (IoU=0.75):    {test_stats['AP75']:.4f}")
-        print(f"  AP (small):         {test_stats['AP_small']:.4f}")
-        print(f"  AP (medium):        {test_stats['AP_medium']:.4f}")
-        print(f"  AP (large):         {test_stats['AP_large']:.4f}")
-    
-    print("="*80 + "\n")
-    
-    # Save results to JSON
-    results_file = output_dir / 'test_metrics.json'
+    # Save results to JSON in logs directory
+    results_file = logs_dir / 'test_results.json'
     with open(results_file, 'w') as f:
-        json.dump(test_stats, f, indent=2)
+        json.dump(all_test_stats, f, indent=2)
     print(f"✓ Results saved to: {results_file}")
     
-    # Visualize predictions
+    # Visualize predictions (using first available loader)
     if visualize:
         print(f"\nGenerating {num_visualize} visualizations...")
         model.eval()
@@ -177,45 +208,52 @@ def test_model(config_path, checkpoint_path, visualize=False, num_visualize=10, 
         class_names = ['fire', 'smoke']
         viz_count = 0
         
+        # Use combined loader or iterate through categories
+        # For simplicity, just visualize from the first non-empty category or iterate
+        
         with torch.no_grad():
-            for samples, targets in data_loader_test:
+            for cat, loader in data_loaders_test.items():
                 if viz_count >= num_visualize:
                     break
                 
-                # Move to device
-                samples = samples.to(device)
-                
-                # Get predictions
-                outputs = model(samples)
-                
-                # Postprocess
-                orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
-                results = postprocessors['bbox'](outputs, orig_target_sizes)
-                
-                # Visualize each image in batch
-                for i, (target, result) in enumerate(zip(targets, results)):
+                for samples, targets in loader:
                     if viz_count >= num_visualize:
                         break
                     
-                    # Get original image
-                    img_id = target['image_id'].item()
-                    img_info = data_loader_test.dataset.images[img_id]
-                    img_path = data_loader_test.dataset.img_folder / img_info['file_name']
-                    image = Image.open(img_path).convert('RGB')
+                    # Move to device
+                    samples = samples.to(device)
                     
-                    # Save visualization
-                    viz_path = viz_dir / f'test_{viz_count:04d}_id_{img_id}.png'
-                    visualize_predictions(image, target, result, viz_path, class_names, threshold)
+                    # Get predictions
+                    outputs = model(samples)
                     
-                    viz_count += 1
-                    if (viz_count) % 5 == 0:
-                        print(f"  Generated {viz_count}/{num_visualize} visualizations")
+                    # Postprocess
+                    orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
+                    results = postprocessors['bbox'](outputs, orig_target_sizes)
+                    
+                    # Visualize each image in batch
+                    for i, (target, result) in enumerate(zip(targets, results)):
+                        if viz_count >= num_visualize:
+                            break
+                        
+                        # Get original image
+                        img_id = target['image_id'].item()
+                        img_info = loader.dataset.images[img_id]
+                        img_path = loader.dataset.img_folder / img_info['file_name']
+                        image = Image.open(img_path).convert('RGB')
+                        
+                        # Save visualization
+                        viz_path = viz_dir / f'test_{cat}_{viz_count:04d}_id_{img_id}.png'
+                        visualize_predictions(image, target, result, viz_path, class_names, threshold)
+                        
+                        viz_count += 1
+                        if (viz_count) % 5 == 0:
+                            print(f"  Generated {viz_count}/{num_visualize} visualizations")
         
         print(f"✓ Saved {viz_count} visualizations to: {viz_dir}")
     
-    print("\n" + "="*80)
-    print("TEST COMPLETE")
-    print("="*80)
+    print("\n" + "="*100)
+    print("TEST EVALUATION COMPLETE".center(100))
+    print("="*100)
 
 
 if __name__ == '__main__':

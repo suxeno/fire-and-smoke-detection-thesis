@@ -54,7 +54,6 @@ pycocotools==2.0.10
 Pygments==2.19.2
 pyparsing==3.2.5
 python-dateutil==2.9.0.post0
-pytorch-triton-rocm==3.5.0+git7416ffcb
 pytz==2025.2
 PyYAML==6.0.3
 pyzmq==27.1.0
@@ -73,9 +72,6 @@ tensorboard==2.20.0
 tensorboard-data-server==0.7.2
 tifffile==2025.10.16
 timm==1.0.22
-torch==2.10.0.dev20251016+rocm7.0
-torchaudio==2.8.0.dev20251017+rocm7.0
-torchvision==0.25.0.dev20251017+rocm7.0
 tornado==6.5.2
 tqdm==4.67.1
 traitlets==5.14.3

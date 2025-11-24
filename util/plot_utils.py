@@ -10,67 +10,90 @@ import matplotlib.pyplot as plt
 from pathlib import Path, PurePath
 
 
-def plot_logs(logs, fields=('class_error', 'loss_bbox_unscaled', 'mAP'), ewm_col=0, log_name='log.txt'):
+def plot_logs(logs, fields=('loss', 'mAP', 'mAP50', 'Recall'), ewm_col=0, log_name='log.txt'):
     '''
-    Function to plot specific fields from training log(s). Plots both training and test results.
-
-    :: Inputs - logs = list containing Path objects, each pointing to individual dir with a log file
-              - fields = which results to plot from each log file - plots both training and test for each field.
-              - ewm_col = optional, which column to use as the exponential weighted smoothing of the plots
-              - log_name = optional, name of log file if different than default 'log.txt'.
-
-    :: Outputs - matplotlib plots of results in fields, color coded for each log file.
-               - solid lines are training results, dashed lines are test results.
-
+    Function to plot specific fields from training log(s). Plots both training and validation results.
+    Handles multiple validation categories (CV, UAV, RS).
     '''
     func_name = "plot_utils.py::plot_logs"
-
-    # verify logs is a list of Paths (list[Paths]) or single Pathlib object Path,
-    # convert single Path to list to avoid 'not iterable' error
 
     if not isinstance(logs, list):
         if isinstance(logs, PurePath):
             logs = [logs]
-            print(f"{func_name} info: logs param expects a list argument, converted to list[Path].")
         else:
-            raise ValueError(f"{func_name} - invalid argument for logs parameter.\n \
-            Expect list[Path] or single Path obj, received {type(logs)}")
+            raise ValueError(f"{func_name} - invalid argument for logs parameter.")
 
-    # Quality checks - verify valid dir(s), that every item in list is Path object, and that log_name exists in each dir
     for i, dir in enumerate(logs):
         if not isinstance(dir, PurePath):
-            raise ValueError(f"{func_name} - non-Path object in logs argument of {type(dir)}: \n{dir}")
+            raise ValueError(f"{func_name} - non-Path object in logs argument")
         if not dir.exists():
-            raise ValueError(f"{func_name} - invalid directory in logs argument:\n{dir}")
-        # verify log_name exists
+            raise ValueError(f"{func_name} - invalid directory: {dir}")
         fn = Path(dir / log_name)
         if not fn.exists():
-            print(f"-> missing {log_name}.  Have you gotten to Epoch 1 in training?")
-            print(f"--> full path of missing log file: {fn}")
+            print(f"-> missing {log_name} in {dir}")
             return
 
-    # load log file(s) and plot
+    # Load log files
     dfs = [pd.read_json(Path(p) / log_name, lines=True) for p in logs]
 
-    fig, axs = plt.subplots(ncols=len(fields), figsize=(16, 5))
+    # Create subplots
+    fig, axs = plt.subplots(ncols=len(fields), figsize=(5 * len(fields), 5))
+    if len(fields) == 1:
+        axs = [axs]
 
-    for df, color in zip(dfs, sns.color_palette(n_colors=len(logs))):
+    # Define styles for different categories
+    styles = {
+        'train': {'color': 'blue', 'style': '-', 'label': 'Train'},
+        'val': {'color': 'black', 'style': '--', 'label': 'Val (Avg)'},
+        'val_CV': {'color': 'orange', 'style': '--', 'label': 'Val CV'},
+        'val_UAV': {'color': 'green', 'style': '--', 'label': 'Val UAV'},
+        'val_RS': {'color': 'red', 'style': '--', 'label': 'Val RS'},
+    }
+
+    for df in dfs:
         for j, field in enumerate(fields):
-            if field == 'mAP':
-                coco_eval = pd.DataFrame(
-                    np.stack(df.test_coco_eval_bbox.dropna().values)[:, 1]
-                ).ewm(com=ewm_col).mean()
-                axs[j].plot(coco_eval, c=color)
-            else:
-                df.interpolate().ewm(com=ewm_col).mean().plot(
-                    y=[f'train_{field}', f'test_{field}'],
-                    ax=axs[j],
-                    color=[color] * 2,
-                    style=['-', '--']
-                )
-    for ax, field in zip(axs, fields):
-        ax.legend([Path(p).name for p in logs])
-        ax.set_title(field)
+            ax = axs[j]
+            
+            # Find all columns matching the field
+            # We look for: train_{field}, val_{field}, val_CV_{field}, etc.
+            
+            # 1. Train
+            if f'train_{field}' in df.columns:
+                data = df[f'train_{field}'].interpolate().ewm(com=ewm_col).mean()
+                ax.plot(data, color=styles['train']['color'], linestyle=styles['train']['style'], label=styles['train']['label'])
+            
+            # 2. Val Average
+            if f'val_{field}' in df.columns:
+                data = df[f'val_{field}'].interpolate().ewm(com=ewm_col).mean()
+                ax.plot(data, color=styles['val']['color'], linestyle=styles['val']['style'], label=styles['val']['label'])
+            
+            # 3. Val Categories
+            for cat in ['CV', 'UAV', 'RS']:
+                col_name = f'val_{cat}_{field}'
+                if col_name in df.columns:
+                    data = df[col_name].interpolate().ewm(com=ewm_col).mean()
+                    style = styles.get(f'val_{cat}', {'color': 'gray', 'style': '--'})
+                    ax.plot(data, color=style['color'], linestyle=style['style'], label=style['label'])
+            
+            # Special handling for mAP/AP if not found directly
+            if field == 'mAP' and 'val_AP' not in df.columns:
+                # Try to find val_AP or val_CV_AP etc if field is just 'mAP'
+                # But usually we pass 'mAP' and expect 'val_mAP' or 'val_AP'
+                # If the user passes 'mAP', we map it to 'AP' in the log
+                if 'val_AP' in df.columns:
+                     data = df['val_AP'].interpolate().ewm(com=ewm_col).mean()
+                     ax.plot(data, color=styles['val']['color'], linestyle=styles['val']['style'], label=styles['val']['label'])
+
+            ax.set_title(field)
+            ax.set_xlabel('Epoch')
+            ax.grid(True, linestyle=':', alpha=0.6)
+            
+            # Deduplicate legend labels
+            handles, labels = ax.get_legend_handles_labels()
+            by_label = dict(zip(labels, handles))
+            ax.legend(by_label.values(), by_label.keys())
+
+    plt.tight_layout()
 
 
 def plot_precision_recall(files, naming_scheme='iter'):

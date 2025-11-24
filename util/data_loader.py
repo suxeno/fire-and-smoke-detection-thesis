@@ -12,37 +12,14 @@ from .misc import collate_fn
 from .data_transform import make_data_transforms
 
 class DatasetsLoader(torch.utils.data.Dataset):
-    """
-    Fire and Smoke Detection Dataset.
-    
-    Expected structure:
-        root/
-            images/
-                CV/
-                    fire/
-                        fire_CV000000.jpg
-                    smoke/
-                    bothFireAndSmoke/
-                    neitherFireNorSmoke/
-                UAV/
-                    ...
-                RS/
-                    ...
-            annotations/
-                COCO/
-                    Annotations/
-                        train.json
-                        val.json
-                        test.json
-    """
-    
-    def __init__(self, img_folder, ann_file, transforms=None, return_masks=False):
+    def __init__(self, img_folder, ann_file, transforms=None, return_masks=False, filter_category=None):
         """
         Args:
             img_folder: Path to images root directory (e.g., 'datasets/images')
             ann_file: Path to COCO annotation file (e.g., 'datasets/annotations/COCO/Annotations/train.json')
             transforms: Transformations to apply
             return_masks: Whether to return segmentation masks (not used for detection)
+            filter_category: Optional category string to filter images (e.g., 'CV', 'UAV', 'RS')
         """
         self.img_folder = Path(img_folder)
         self.ann_file = Path(ann_file)
@@ -58,13 +35,22 @@ class DatasetsLoader(torch.utils.data.Dataset):
         self.images = {img['id']: img for img in self.coco_data['images']}
         self.categories = {cat['id']: cat for cat in self.coco_data['categories']}
         
+        # Filter images by category if specified
+        if filter_category:
+            print(f"Filtering dataset for category: {filter_category}")
+            self.images = {
+                k: v for k, v in self.images.items() 
+                if v['file_name'].startswith(f"{filter_category}/")
+            }
+        
         # Group annotations by image_id
         self.img_to_anns = {}
         for ann in self.coco_data['annotations']:
             img_id = ann['image_id']
-            if img_id not in self.img_to_anns:
-                self.img_to_anns[img_id] = []
-            self.img_to_anns[img_id].append(ann)
+            if img_id in self.images:  # Only keep annotations for filtered images
+                if img_id not in self.img_to_anns:
+                    self.img_to_anns[img_id] = []
+                self.img_to_anns[img_id].append(ann)
         
         # List of image IDs
         self.ids = list(sorted(self.images.keys()))
@@ -183,7 +169,7 @@ class ConvertCocoPolysToMask(object):
         return image, target
 
 
-def build_dataset(image_set, args):
+def build_dataset(image_set, args, filter_category=None):
     """
     Build fire/smoke detection dataset.
     
@@ -192,6 +178,7 @@ def build_dataset(image_set, args):
         args: Arguments with dataset configuration
             - data_path: Root path to dataset (e.g., 'datasets' or 'datasets_sample')
             - use_sample: Whether to use sample dataset
+        filter_category: Optional category to filter (CV, UAV, RS)
     
     Returns:
         FireSmokeDetection dataset
@@ -217,13 +204,14 @@ def build_dataset(image_set, args):
         img_folder=img_folder,
         ann_file=ann_file,
         transforms=make_data_transforms(image_set, args),
-        return_masks=False
+        return_masks=False,
+        filter_category=filter_category
     )
     
     return dataset
 
 
-def build_data_loader(image_set, args):
+def build_data_loader(image_set, args, filter_category=None):
     """
     Build DataLoader for fire/smoke detection.
     
@@ -232,12 +220,13 @@ def build_data_loader(image_set, args):
         args: Arguments with dataloader configuration
             - batch_size: Batch size for training
             - num_workers: Number of data loading workers
+        filter_category: Optional category to filter (CV, UAV, RS)
     
     Returns:
         torch.utils.data.DataLoader
     """
     
-    dataset = build_dataset(image_set, args)
+    dataset = build_dataset(image_set, args, filter_category)
     
     # DataLoader settings
     if image_set == 'train':
@@ -245,7 +234,7 @@ def build_data_loader(image_set, args):
         shuffle = True
         drop_last = True
     else:
-        batch_size = 1  # Eval with batch_size=1 for accurate metrics
+        batch_size = 1
         shuffle = False
         drop_last = False
     

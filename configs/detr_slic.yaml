@@ -1,5 +1,4 @@
 # DETR-SLIC Configuration for Fire and Smoke Detection
-# Superpixel-enhanced DETR for efficient object detection
 
 # Model Architecture
 model_name: 'detr_slic'
@@ -22,18 +21,18 @@ pre_norm: false  # Pre-normalization in transformer
 num_queries: 100  # Number of object queries
 
 # SLIC Superpixel Settings
-n_superpixels: 200  # Number of superpixels per image
-slic_compactness: 10.0  # SLIC compactness parameter (higher = more compact)
+n_superpixels: 300  # Number of superpixels per image
+slic_compactness: 20.0  # SLIC compactness parameter (higher = more compact)
 pooling_method: 'mean'  # Options: mean, max, sum
 use_superpixel_encoder: true  # Use superpixel transformer encoder
 
 # Dataset
 dataset_file: 'fire_smoke'  # Custom dataset
-num_classes: 2  # fire, smoke (bothFireAndSmoke uses both labels)
+num_classes: 2  # fire, smoke
 
 # Data Paths
-use_sample: true  # Set to false for full dataset
-data_path: 'datasets_sample'  # Change to 'datasets' for full dataset
+use_sample: false  # Set to false for full dataset
+data_path: 'datasets'  # Change to 'datasets' for full dataset
 
 # Data Augmentation (minimal for large dataset)
 scales: [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]  # Multi-scale training
@@ -47,8 +46,8 @@ weight_decay: 1.0e-4
 clip_max_norm: 0.1  # Gradient clipping
 
 # Learning rate schedule
-lr_drop: 40  # Epoch to drop learning rate
-epochs: 50  # Total training epochs
+lr_drop: 80  # Epoch to drop learning rate
+epochs: 100  # Total training epochs
 
 # Batch and workers
 batch_size: 16  # Batch size per GPU (increase if you have more VRAM)
@@ -66,7 +65,7 @@ eos_coef: 0.1  # No-object class weight
 aux_loss: true  # Auxiliary decoding losses (improves training)
 
 # Validation
-eval_every: 5  # Evaluate every N epochs
+eval_every: 1  # Evaluate every N epochs
 save_every: 10  # Save checkpoint every N epochs
 
 # System
@@ -97,5 +96,3 @@ wandb_run_name: 'detr-slic-initial'  # WandB run name
 # 2. To use full dataset: set use_sample=false, data_path='datasets'
 # 3. Batch size of 16 works for most GPUs with 8GB+ VRAM
 # 4. SLIC reduces encoder tokens from ~2000 to ~100 (20x speedup)
-# 5. Expected training time on sample: ~2-3 hours on single GPU
-# 6. For comparison with baseline DETR, use detr_baseline.yaml
