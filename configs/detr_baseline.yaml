@@ -20,19 +20,13 @@ dec_layers: 6  # Number of decoder layers
 pre_norm: false  # Pre-normalization in transformer
 num_queries: 100  # Number of object queries
 
-# SLIC Settings (not used, but kept for compatibility)
-n_superpixels: 100  # Not used in baseline
-slic_compactness: 10.0  # Not used in baseline
-pooling_method: 'mean'  # Not used in baseline
-use_superpixel_encoder: false  # Disabled for baseline
-
 # Dataset
 dataset_file: 'fire_smoke'  # Custom dataset
 num_classes: 2  # fire, smoke
 
 # Data Paths - Easy switching between sample and full dataset
-use_sample: true  # Set to false for full dataset
-data_path: 'datasets_sample'  # Change to 'datasets' for full dataset
+use_sample: false  # Set to false for full dataset
+data_path: 'datasets'  # Change to 'datasets' for full dataset
 
 # Data Augmentation (minimal for large dataset)
 scales: [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]  # Multi-scale training
@@ -50,7 +44,7 @@ lr_drop: 40  # Epoch to drop learning rate
 epochs: 50  # Total training epochs
 
 # Batch and workers
-batch_size: 2  # Batch size per GPU (baseline is more memory intensive)
+batch_size: 4  # Batch size per GPU (baseline is more memory intensive)
 num_workers: 4  # Data loading workers
 
 # Loss weights
@@ -100,7 +94,7 @@ wandb_run_name: 'detr-baseline-initial'  # WandB run name
 # 6. Memory usage: Higher than DETR-SLIC due to full pixel-level encoding
 # 7. Training time on sample: ~4-5 hours (slower than SLIC version)
 #
-# Comparison Metrics for Thesis:
+# Comparison Metrics:
 # - Training time per epoch
 # - Inference time per image
 # - GPU memory usage

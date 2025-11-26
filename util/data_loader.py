@@ -12,7 +12,7 @@ from .misc import collate_fn
 from .data_transform import make_data_transforms
 
 class DatasetsLoader(torch.utils.data.Dataset):
-    def __init__(self, img_folder, ann_file, transforms=None, return_masks=False, filter_category=None):
+    def __init__(self, img_folder, ann_file, transforms=None, return_masks=False, filter_category=None, superpixel_path=None):
         """
         Args:
             img_folder: Path to images root directory (e.g., 'datasets/images')
@@ -20,11 +20,13 @@ class DatasetsLoader(torch.utils.data.Dataset):
             transforms: Transformations to apply
             return_masks: Whether to return segmentation masks (not used for detection)
             filter_category: Optional category string to filter images (e.g., 'CV', 'UAV', 'RS')
+            superpixel_path: Path to pre-computed superpixels (e.g., 'datasets/superpixels')
         """
         self.img_folder = Path(img_folder)
         self.ann_file = Path(ann_file)
         self._transforms = transforms
         self.return_masks = return_masks
+        self.superpixel_path = Path(superpixel_path) if superpixel_path else None
         self.prepare = ConvertCocoPolysToMask(return_masks)
         
         # Load COCO annotations
@@ -87,6 +89,24 @@ class DatasetsLoader(torch.utils.data.Dataset):
         # Prepare target
         target = {'image_id': img_id, 'annotations': ann_ids}
         img, target = self.prepare(img, target)
+        
+        # Load superpixel map
+        if self.superpixel_path:
+            rel_path = Path(img_info['file_name'])
+            # Try loading compressed .npz first (new format)
+            sp_path_npz = self.superpixel_path / rel_path.parent / (rel_path.stem + '.npz')
+            sp_path_npy = self.superpixel_path / rel_path.parent / (rel_path.stem + '.npy')
+            
+            if sp_path_npz.exists():
+                import numpy as np
+                # Load compressed array
+                with np.load(sp_path_npz) as data:
+                    sp_map = data['sp_map']
+                target['slic_map'] = torch.from_numpy(sp_map.astype(np.int64)).long()
+            elif sp_path_npy.exists():
+                import numpy as np
+                sp_map = np.load(sp_path_npy)
+                target['slic_map'] = torch.from_numpy(sp_map.astype(np.int64)).long()
         
         # Apply transforms
         if self._transforms is not None:
@@ -195,6 +215,7 @@ def build_dataset(image_set, args, filter_category=None):
     # Paths
     img_folder = root / 'images'
     ann_file = root / 'annotations' / 'COCO' / 'Annotations' / f'{image_set}.json'
+    superpixel_path = root / 'superpixels'
     
     assert img_folder.exists(), f"Images folder not found: {img_folder}"
     assert ann_file.exists(), f"Annotation file not found: {ann_file}"
@@ -205,7 +226,8 @@ def build_dataset(image_set, args, filter_category=None):
         ann_file=ann_file,
         transforms=make_data_transforms(image_set, args),
         return_masks=False,
-        filter_category=filter_category
+        filter_category=filter_category,
+        superpixel_path=superpixel_path if superpixel_path.exists() else None
     )
     
     return dataset

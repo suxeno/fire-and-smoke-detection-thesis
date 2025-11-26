@@ -5,7 +5,7 @@ model_name: 'detr_slic'
 use_slic: true  # Enable SLIC superpixel encoder
 
 # Backbone
-backbone: 'resnet34'  # Options: resnet18, resnet34, resnet50, resnet101
+backbone: 'resnet50'  # Options: resnet18, resnet34, resnet50, resnet101
 dilation: false  # Use dilated convolutions in last stage
 position_embedding: 'sine'  # Options: sine, learned
 masks: false  # No segmentation masks for detection
@@ -14,7 +14,7 @@ masks: false  # No segmentation masks for detection
 hidden_dim: 256  # Model dimension
 dropout: 0.1
 nheads: 8  # Number of attention heads
-dim_feedforward: 2048  # FFN dimension
+dim_feedforward: 2048  # FFN dimension (usually 4x-8x hidden_dim)
 enc_layers: 6  # Number of encoder layers
 dec_layers: 6  # Number of decoder layers
 pre_norm: false  # Pre-normalization in transformer
@@ -31,26 +31,26 @@ dataset_file: 'fire_smoke'  # Custom dataset
 num_classes: 2  # fire, smoke
 
 # Data Paths
-use_sample: false  # Set to false for full dataset
-data_path: 'datasets'  # Change to 'datasets' for full dataset
+use_sample: true  # Set to false for full dataset
+data_path: 'datasets_sample'  # Change to 'datasets' for full dataset
 
-# Data Augmentation (minimal for large dataset)
+# Data Augmentation
 scales: [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]  # Multi-scale training
 max_size: 1333  # Maximum image dimension
 
 # Training
 # Optimizer
 lr: 1.0e-4  # Learning rate
-lr_backbone: 1.0e-5  # Backbone learning rate (lower for pretrained)
+lr_backbone: 1.0e-5  # Backbone learning rate
 weight_decay: 1.0e-4
 clip_max_norm: 0.1  # Gradient clipping
 
 # Learning rate schedule
-lr_drop: 80  # Epoch to drop learning rate
-epochs: 100  # Total training epochs
+lr_drop: 30  # Epoch to drop learning rate
+epochs: 40  # Total training epochs
 
 # Batch and workers
-batch_size: 16  # Batch size per GPU (increase if you have more VRAM)
+batch_size: 2  # Batch size per GPU
 num_workers: 4  # Data loading workers
 
 # Loss weights
@@ -65,8 +65,7 @@ eos_coef: 0.1  # No-object class weight
 aux_loss: true  # Auxiliary decoding losses (improves training)
 
 # Validation
-eval_every: 1  # Evaluate every N epochs
-save_every: 10  # Save checkpoint every N epochs
+eval_every: 2  # Evaluate every N epochs
 
 # System
 device: 'cuda'  # Options: cuda, cpu

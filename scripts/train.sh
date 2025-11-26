@@ -7,3 +7,6 @@ cd "$SCRIPT_DIR/.."
 
 # the command from the Project Root
 nohup python3 main.py --config configs/detr_slic.yaml > train.out 2>&1 &
+PID=$!
+echo "Training started with PID: $PID"
+echo "Logs are being written to train.out"

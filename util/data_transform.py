@@ -13,9 +13,6 @@ import torchvision.transforms.functional as F
 from .box_ops import box_xyxy_to_cxcywh
 from .misc import interpolate
 
-
-
-
 def resize(image, target, size, max_size=None):
     """Resize image and adjust bounding boxes accordingly."""
     def get_size_with_aspect_ratio(image_size, size, max_size=None):
@@ -70,6 +67,13 @@ def resize(image, target, size, max_size=None):
     if "masks" in target:
         target['masks'] = interpolate(
             target['masks'][:, None].float(), size, mode="nearest")[:, 0] > 0.5
+
+    if "slic_map" in target:
+        # slic_map is (H, W), need (1, 1, H, W) for interpolate
+        # Use nearest neighbor to preserve integer IDs
+        slic_map = target["slic_map"].unsqueeze(0).unsqueeze(0).float()
+        slic_map = interpolate(slic_map, size, mode="nearest")
+        target["slic_map"] = slic_map.squeeze().long()
 
     return rescaled_image, target
 

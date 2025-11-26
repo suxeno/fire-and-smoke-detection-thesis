@@ -6,7 +6,6 @@ from typing import Optional
 from util.misc import NestedTensor, nested_tensor_from_tensor_list
 from .backbone import build_backbone
 from .transformer import build_transformer, TransformerDecoder
-from .superpixel.slic import SLICSuperpixel
 from .superpixel.feature_pooling import SuperpixelFeaturePooling
 from .superpixel.superpixel_encoder import SuperpixelTransformerEncoder
 from .detr import MLP, SetCriterion, PostProcess
@@ -34,13 +33,6 @@ class DETRSlic(nn.Module):
         self.use_superpixel_encoder = use_superpixel_encoder
         
         hidden_dim = transformer.d_model
-        
-        # SLIC superpixel generator
-        self.slic = SLICSuperpixel(
-            n_segments=n_superpixels,
-            compactness=slic_compactness,
-            differentiable=False
-        )
         
         # Feature pooling module
         self.superpixel_pooling = SuperpixelFeaturePooling(
@@ -76,10 +68,11 @@ class DETRSlic(nn.Module):
         # Positional encoding for superpixels
         self.superpixel_pos_embed = nn.Linear(4, hidden_dim)  # spatial features -> pos encoding
         
-    def forward(self, samples: NestedTensor):
+    def forward(self, samples: NestedTensor, targets: Optional[list] = None):
         """
         Args:
             samples: NestedTensor with images and masks
+            targets: Optional list of targets (containing 'slic_map' if pre-computed)
         Returns:
             Dictionary with predictions
         """
@@ -93,21 +86,39 @@ class DETRSlic(nn.Module):
         # Project features
         src_proj = self.input_proj(src)  # (B, hidden_dim, H, W)
         
-        # Generate superpixels from original images
-        images = samples.tensors  # (B, 3, H', W')
         B, C, H_feat, W_feat = src_proj.shape
         
-        # Resizing to 300x300 for slic
-        slic_size = 300
-        images_for_slic = F.interpolate(images, size=(slic_size, slic_size), mode='bilinear', align_corners=False)
-        
-        # Run SLIC on resized images
-        superpixel_maps, num_superpixels = self.slic(images_for_slic)  # (B, slic_size, slic_size)
-        
-        # Resize superpixel maps to feature map size using nearest neighbor
-        superpixel_maps = superpixel_maps.float().unsqueeze(1)  # (B, 1, slic_size, slic_size)
-        superpixel_maps = F.interpolate(superpixel_maps, size=(H_feat, W_feat), mode='nearest')
-        superpixel_maps = superpixel_maps.squeeze(1).long()  # (B, H_feat, W_feat)
+        # Determine superpixel maps
+        if targets is not None and 'slic_map' in targets[0]:
+            # Use pre-computed superpixels from targets
+            slic_maps_list = [t['slic_map'] for t in targets]
+            
+            # Pad maps to match batch dimensions
+            # We use a custom padding value of -1 to indicate padding
+            max_h, max_w = samples.tensors.shape[-2:]
+            slic_maps_padded = torch.full((B, max_h, max_w), -1, dtype=torch.long, device=samples.tensors.device)
+            
+            num_superpixels_list = []
+            for i, sp_map in enumerate(slic_maps_list):
+                h, w = sp_map.shape
+                slic_maps_padded[i, :h, :w] = sp_map
+                num_superpixels_list.append(sp_map.max() + 1)
+            
+            superpixel_maps = slic_maps_padded
+            num_superpixels = torch.tensor(num_superpixels_list, device=samples.tensors.device)
+            
+            # Resize superpixel maps to feature map size using nearest neighbor
+            superpixel_maps = superpixel_maps.float().unsqueeze(1)  # (B, 1, H, W)
+            superpixel_maps = F.interpolate(superpixel_maps, size=(H_feat, W_feat), mode='nearest')
+            superpixel_maps = superpixel_maps.squeeze(1).long()  # (B, H_feat, W_feat)
+            
+        else:
+            # Pre-computed superpixels are required
+            raise RuntimeError(
+                "Pre-computed superpixel maps ('slic_map') not found in targets. "
+                "Please run 'util/generate_superpixel.py' to generate them offline before training. "
+                "On-the-fly generation is disabled to ensure quality."
+            )
         
         # Pool features within superpixels
         superpixel_features, superpixel_mask = self.superpixel_pooling(

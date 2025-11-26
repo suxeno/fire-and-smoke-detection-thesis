@@ -223,11 +223,6 @@ def main(config_path):
                 best_val_loss = val_stats['loss']
                 torch.save(checkpoint_dict, output_dir / 'checkpoint_best.pth')
                 print(f"  ✓ Saved best checkpoint (val_loss: {best_val_loss:.4f})")
-            
-            # Save periodic checkpoints
-            # if hasattr(args, 'save_every') and (epoch + 1) % args.save_every == 0:
-            #     torch.save(checkpoint_dict, output_dir / f'checkpoint_epoch_{epoch:04d}.pth')
-            #     print(f"  ✓ Saved checkpoint at epoch {epoch}")
     
     # Training complete
     total_time = time.time() - start_time
