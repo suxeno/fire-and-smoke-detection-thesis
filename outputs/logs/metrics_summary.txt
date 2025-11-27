@@ -1,435 +1,716 @@
-Training Log for detr_slic
-Started: 2025-11-25 19:46:22
+Training Log for detr_slic_cv
+Started: 2025-11-26 23:31:35
 ====================================================================================================
 
 Epoch 0:
-  Train - Loss: 23.4802
-  Val (Avg) - Loss: 30.7550 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0002
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 28.5374 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 30.6160 | mAP: 0.0000 | Recall: 0.0003
-    Fire  - AP: 0.0000 | Recall: 0.0006
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 33.1115 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 4381.7s
+  Train - Loss: 24.6165
+  Val (Avg) - Loss: 24.6781 | mAP: 0.0000 | Recall: 0.0019
+    Fire (Avg) - AP: 0.0000 | Recall: 0.0005
+    Smoke (Avg) - AP: 0.0000 | Recall: 0.0034
+  Time: 233.4s
 
 Epoch 1:
-  Train - Loss: 20.4445
-  Time: 2878.7s
+  Train - Loss: 18.7936
+  Val (Avg) - Loss: 19.5784 | mAP: 0.0087 | Recall: 0.0310
+    Fire (Avg) - AP: 0.0000 | Recall: 0.0128
+    Smoke (Avg) - AP: 0.0175 | Recall: 0.0493
+  Time: 360.5s
 
 Epoch 2:
-  Train - Loss: 19.8434
-  Val (Avg) - Loss: 32.0160 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0001
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 29.0562 | mAP: 0.0000 | Recall: 0.0001
-    Fire  - AP: 0.0001 | Recall: 0.0003
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 32.2363 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 34.7554 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 4552.5s
+  Train - Loss: 17.9161
+  Val (Avg) - Loss: 12.2979 | mAP: 0.0067 | Recall: 0.0865
+    Fire (Avg) - AP: 0.0001 | Recall: 0.0135
+    Smoke (Avg) - AP: 0.0134 | Recall: 0.1594
+  Time: 304.9s
 
 Epoch 3:
-  Train - Loss: 19.5310
-  Time: 2893.9s
-
+  Train - Loss: 17.6063
+  Val (Avg) - Loss: 12.8012 | mAP: 0.0114 | Recall: 0.0750
+    Fire (Avg) - AP: 0.0001 | Recall: 0.0138
+    Smoke (Avg) - AP: 0.0227 | Recall: 0.1362
+  Time: 239.0s
 Epoch 4:
-  Train - Loss: 19.6434
-  Val (Avg) - Loss: 31.3338 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0002
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 28.8733 | mAP: 0.0000 | Recall: 0.0002
-    Fire  - AP: 0.0000 | Recall: 0.0005
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 31.0031 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 34.1249 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 4409.1s
+  Train - Loss: 17.1006
+  Val (Avg) - Loss: 12.0437 | mAP: 0.0047 | Recall: 0.1010
+    Fire (Avg) - AP: 0.0001 | Recall: 0.0338
+    Smoke (Avg) - AP: 0.0093 | Recall: 0.1682
+  Time: 252.8s
 
 Epoch 5:
-  Train - Loss: 19.4634
-  Time: 2887.4s
+  Train - Loss: 16.7598
+  Val (Avg) - Loss: 10.6094 | mAP: 0.0117 | Recall: 0.0809
+    Fire (Avg) - AP: 0.0001 | Recall: 0.0179
+    Smoke (Avg) - AP: 0.0233 | Recall: 0.1439
+  Time: 253.5s
 
 Epoch 6:
-  Train - Loss: 19.2583
-  Val (Avg) - Loss: 31.4021 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0001
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 29.8414 | mAP: 0.0000 | Recall: 0.0001
-    Fire  - AP: 0.0000 | Recall: 0.0002
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 30.6769 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 33.6878 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 2872.1s
+  Train - Loss: 16.6865
+  Val (Avg) - Loss: 10.1690 | mAP: 0.0083 | Recall: 0.0853
+    Fire (Avg) - AP: 0.0006 | Recall: 0.0224
+    Smoke (Avg) - AP: 0.0160 | Recall: 0.1481
+  Time: 254.3s
 
 Epoch 7:
-  Train - Loss: 19.2144
-  Time: 674.6s
+  Train - Loss: 16.4589
+  Val (Avg) - Loss: 10.5171 | mAP: 0.0155 | Recall: 0.1083
+    Fire (Avg) - AP: 0.0003 | Recall: 0.0411
+    Smoke (Avg) - AP: 0.0306 | Recall: 0.1754
+  Time: 254.9s
 
 Epoch 8:
-  Train - Loss: 19.3789
-  Val (Avg) - Loss: 31.9740 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0001
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 29.9266 | mAP: 0.0000 | Recall: 0.0001
-    Fire  - AP: 0.0000 | Recall: 0.0003
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 31.9208 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 34.0746 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 994.4s
+  Train - Loss: 16.3677
+  Val (Avg) - Loss: 9.8369 | mAP: 0.0127 | Recall: 0.1021
+    Fire (Avg) - AP: 0.0001 | Recall: 0.0224
+    Smoke (Avg) - AP: 0.0253 | Recall: 0.1817
+  Time: 253.7s
 
 Epoch 9:
-  Train - Loss: 19.4611
-  Time: 672.1s
+  Train - Loss: 16.2499
+  Val (Avg) - Loss: 9.9087 | mAP: 0.0120 | Recall: 0.1171
+    Fire (Avg) - AP: 0.0003 | Recall: 0.0451
+    Smoke (Avg) - AP: 0.0237 | Recall: 0.1891
+  Time: 251.9s
 
 Epoch 10:
-  Train - Loss: 19.3421
-  Val (Avg) - Loss: 32.6429 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0001
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 31.4150 | mAP: 0.0000 | Recall: 0.0001
-    Fire  - AP: 0.0000 | Recall: 0.0002
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 31.6361 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0001 | Recall: 0.0001
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 34.8775 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 996.3s
+  Train - Loss: 15.9571
+  Val (Avg) - Loss: 9.6530 | mAP: 0.0098 | Recall: 0.1214
+    Fire (Avg) - AP: 0.0011 | Recall: 0.0405
+    Smoke (Avg) - AP: 0.0186 | Recall: 0.2022
+  Time: 253.4s
 
 Epoch 11:
-  Train - Loss: 19.3289
-  Time: 673.9s
+  Train - Loss: 15.7886
+  Val (Avg) - Loss: 9.7199 | mAP: 0.0088 | Recall: 0.1093
+    Fire (Avg) - AP: 0.0002 | Recall: 0.0351
+    Smoke (Avg) - AP: 0.0175 | Recall: 0.1835
+  Time: 253.2s
 
 Epoch 12:
-  Train - Loss: 19.1868
-  Val (Avg) - Loss: 33.4734 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0001
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 31.5025 | mAP: 0.0000 | Recall: 0.0002
-    Fire  - AP: 0.0000 | Recall: 0.0003
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 32.8600 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 36.0578 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 995.0s
+  Train - Loss: 15.7181
+  Val (Avg) - Loss: 9.4091 | mAP: 0.0055 | Recall: 0.1341
+    Fire (Avg) - AP: 0.0003 | Recall: 0.0460
+    Smoke (Avg) - AP: 0.0106 | Recall: 0.2221
+  Time: 253.1s
 
 Epoch 13:
-  Train - Loss: 19.2168
-  Time: 673.1s
+  Train - Loss: 15.5193
+  Val (Avg) - Loss: 10.3798 | mAP: 0.0035 | Recall: 0.0920
+    Fire (Avg) - AP: 0.0002 | Recall: 0.0304
+    Smoke (Avg) - AP: 0.0067 | Recall: 0.1537
+  Time: 253.5s
 
 Epoch 14:
-  Train - Loss: 19.4908
-  Val (Avg) - Loss: 33.3387 | mAP: 0.0001 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0001 | Recall: 0.0007
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 32.2654 | mAP: 0.0000 | Recall: 0.0008
-    Fire  - AP: 0.0000 | Recall: 0.0015
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 31.8865 | mAP: 0.0001 | Recall: 0.0002
-    Fire  - AP: 0.0003 | Recall: 0.0005
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 35.8641 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 997.2s
+  Train - Loss: 15.4048
+  Val (Avg) - Loss: 9.3554 | mAP: 0.0133 | Recall: 0.1077
+    Fire (Avg) - AP: 0.0003 | Recall: 0.0312
+    Smoke (Avg) - AP: 0.0263 | Recall: 0.1843
+  Time: 253.9s
 
 Epoch 15:
-  Train - Loss: 19.5370
-  Time: 673.2s
+  Train - Loss: 15.2471
+  Val (Avg) - Loss: 9.3377 | mAP: 0.0093 | Recall: 0.1113
+    Fire (Avg) - AP: 0.0006 | Recall: 0.0498
+    Smoke (Avg) - AP: 0.0181 | Recall: 0.1728
+  Time: 253.6s
 
 Epoch 16:
-  Train - Loss: 19.5344
-  Val (Avg) - Loss: 34.1893 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0001
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 32.5344 | mAP: 0.0000 | Recall: 0.0001
-    Fire  - AP: 0.0000 | Recall: 0.0003
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 33.2733 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 36.7602 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 996.2s
+  Train - Loss: 15.0398
+  Val (Avg) - Loss: 8.8761 | mAP: 0.0177 | Recall: 0.1217
+    Fire (Avg) - AP: 0.0007 | Recall: 0.0510
+    Smoke (Avg) - AP: 0.0347 | Recall: 0.1925
+  Time: 246.6s
 
 Epoch 17:
-  Train - Loss: 19.4936
-  Time: 673.9s
+  Train - Loss: 14.7274
+  Val (Avg) - Loss: 9.0319 | mAP: 0.0108 | Recall: 0.1408
+    Fire (Avg) - AP: 0.0004 | Recall: 0.0559
+    Smoke (Avg) - AP: 0.0213 | Recall: 0.2256
+  Time: 255.0s
 
 Epoch 18:
-  Train - Loss: 19.5919
-  Val (Avg) - Loss: 33.1384 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0000
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 31.5502 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0001
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 32.6510 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 35.2140 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 996.3s
+  Train - Loss: 14.6840
+  Val (Avg) - Loss: 8.8929 | mAP: 0.0098 | Recall: 0.1426
+    Fire (Avg) - AP: 0.0004 | Recall: 0.0575
+    Smoke (Avg) - AP: 0.0193 | Recall: 0.2276
+  Time: 255.0s
 
 Epoch 19:
-  Train - Loss: 19.4805
-  Time: 673.8s
+  Train - Loss: 14.7362
+  Val (Avg) - Loss: 9.6488 | mAP: 0.0135 | Recall: 0.1229
+    Fire (Avg) - AP: 0.0003 | Recall: 0.0437
+    Smoke (Avg) - AP: 0.0266 | Recall: 0.2021
+  Time: 254.5s
 
 Epoch 20:
-  Train - Loss: 19.8093
-  Val (Avg) - Loss: 32.8949 | mAP: 0.0002 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0000
-    Smoke (Avg) - AP: 0.0005 | Recall: 0.0022
-  Val (CV) - Loss: 30.4089 | mAP: 0.0003 | Recall: 0.0030
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0006 | Recall: 0.0060
-  Val (UAV) - Loss: 32.8473 | mAP: 0.0004 | Recall: 0.0003
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0008 | Recall: 0.0006
-  Val (RS) - Loss: 35.4286 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 995.7s
+  Train - Loss: 14.5717
+  Val (Avg) - Loss: 8.8193 | mAP: 0.0106 | Recall: 0.1323
+    Fire (Avg) - AP: 0.0004 | Recall: 0.0554
+    Smoke (Avg) - AP: 0.0209 | Recall: 0.2091
+  Time: 253.7s
 
 Epoch 21:
-  Train - Loss: 20.3863
-  Time: 672.3s
+  Train - Loss: 14.3288
+  Val (Avg) - Loss: 8.8745 | mAP: 0.0128 | Recall: 0.1338
+    Fire (Avg) - AP: 0.0009 | Recall: 0.0581
+    Smoke (Avg) - AP: 0.0248 | Recall: 0.2096
+  Time: 255.1s
 
 Epoch 22:
-  Train - Loss: 20.0977
-  Val (Avg) - Loss: 34.7342 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0000
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 33.4778 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 33.4375 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 37.2874 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 1001.1s
+  Train - Loss: 14.1708
+  Val (Avg) - Loss: 8.4537 | mAP: 0.0110 | Recall: 0.1493
+    Fire (Avg) - AP: 0.0005 | Recall: 0.0668
+    Smoke (Avg) - AP: 0.0216 | Recall: 0.2317
+  Time: 249.8s
 
 Epoch 23:
-  Train - Loss: 20.2633
-  Time: 673.3s
+  Train - Loss: 13.9864
+  Val (Avg) - Loss: 8.3331 | mAP: 0.0095 | Recall: 0.1525
+    Fire (Avg) - AP: 0.0007 | Recall: 0.0599
+    Smoke (Avg) - AP: 0.0184 | Recall: 0.2451
+  Time: 252.1s
 
 Epoch 24:
-  Train - Loss: 20.1982
-  Val (Avg) - Loss: 33.1794 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0001
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 30.1605 | mAP: 0.0000 | Recall: 0.0001
-    Fire  - AP: 0.0000 | Recall: 0.0002
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 33.4565 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 35.9212 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 996.2s
+  Train - Loss: 13.8883
+  Val (Avg) - Loss: 8.4139 | mAP: 0.0084 | Recall: 0.1551
+    Fire (Avg) - AP: 0.0005 | Recall: 0.0690
+    Smoke (Avg) - AP: 0.0163 | Recall: 0.2412
+  Time: 255.5s
 
 Epoch 25:
-  Train - Loss: 19.9194
-  Time: 674.9s
+  Train - Loss: 13.6947
+  Val (Avg) - Loss: 8.3312 | mAP: 0.0149 | Recall: 0.1625
+    Fire (Avg) - AP: 0.0006 | Recall: 0.0683
+    Smoke (Avg) - AP: 0.0292 | Recall: 0.2567
+  Time: 252.6s
 
 Epoch 26:
-  Train - Loss: 20.4228
-  Val (Avg) - Loss: 33.2240 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0001
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 31.8048 | mAP: 0.0000 | Recall: 0.0001
-    Fire  - AP: 0.0000 | Recall: 0.0002
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 32.5630 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0001
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 35.3041 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 996.4s
+  Train - Loss: 13.7489
+  Val (Avg) - Loss: 8.4768 | mAP: 0.0129 | Recall: 0.1496
+    Fire (Avg) - AP: 0.0010 | Recall: 0.0680
+    Smoke (Avg) - AP: 0.0247 | Recall: 0.2312
+  Time: 252.3s
 
 Epoch 27:
-  Train - Loss: 20.1218
-  Time: 674.4s
+  Train - Loss: 13.4157
+  Val (Avg) - Loss: 8.0816 | mAP: 0.0140 | Recall: 0.1648
+    Fire (Avg) - AP: 0.0013 | Recall: 0.0754
+    Smoke (Avg) - AP: 0.0268 | Recall: 0.2543
+  Time: 252.6s
 
 Epoch 28:
-  Train - Loss: 19.9580
-  Val (Avg) - Loss: 31.3176 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0000
-    Smoke (Avg) - AP: 0.0001 | Recall: 0.0004
-  Val (CV) - Loss: 29.7927 | mAP: 0.0001 | Recall: 0.0006
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0002 | Recall: 0.0013
-  Val (UAV) - Loss: 30.7810 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 33.3791 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 995.1s
+  Train - Loss: 13.2146
+  Val (Avg) - Loss: 8.2500 | mAP: 0.0106 | Recall: 0.1635
+    Fire (Avg) - AP: 0.0007 | Recall: 0.0723
+    Smoke (Avg) - AP: 0.0204 | Recall: 0.2547
+  Time: 251.6s
 
 Epoch 29:
-  Train - Loss: 19.9310
-  Time: 673.3s
+  Train - Loss: 13.1400
+  Val (Avg) - Loss: 8.3525 | mAP: 0.0200 | Recall: 0.1581
+    Fire (Avg) - AP: 0.0007 | Recall: 0.0721
+    Smoke (Avg) - AP: 0.0393 | Recall: 0.2440
+  Time: 247.5s
 
 Epoch 30:
-  Train - Loss: 19.8730
-  Val (Avg) - Loss: 32.7960 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0000
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 31.4406 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 31.8562 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 35.0910 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 995.1s
+  Train - Loss: 12.9860
+  Val (Avg) - Loss: 8.3955 | mAP: 0.0105 | Recall: 0.1680
+    Fire (Avg) - AP: 0.0005 | Recall: 0.0728
+    Smoke (Avg) - AP: 0.0205 | Recall: 0.2632
+  Time: 254.9s
 
 Epoch 31:
-  Train - Loss: 19.2266
-  Time: 673.5s
+  Train - Loss: 12.9871
+  Val (Avg) - Loss: 8.2102 | mAP: 0.0132 | Recall: 0.1692
+    Fire (Avg) - AP: 0.0007 | Recall: 0.0730
+    Smoke (Avg) - AP: 0.0257 | Recall: 0.2653
+  Time: 254.2s
 
 Epoch 32:
-  Train - Loss: 19.1927
-  Val (Avg) - Loss: 32.1843 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0000
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 30.5351 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 31.5844 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 34.4333 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 996.5s
+  Train - Loss: 12.7844
+  Val (Avg) - Loss: 8.7213 | mAP: 0.0070 | Recall: 0.1431
+    Fire (Avg) - AP: 0.0007 | Recall: 0.0757
+    Smoke (Avg) - AP: 0.0133 | Recall: 0.2104
+  Time: 253.0s
 
 Epoch 33:
-  Train - Loss: 19.1711
-  Time: 672.8s
+  Train - Loss: 12.7337
+  Val (Avg) - Loss: 8.2582 | mAP: 0.0125 | Recall: 0.1593
+    Fire (Avg) - AP: 0.0004 | Recall: 0.0578
+    Smoke (Avg) - AP: 0.0246 | Recall: 0.2608
+  Time: 254.1s
 
 Epoch 34:
-  Train - Loss: 19.0664
-  Val (Avg) - Loss: 34.1472 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0000
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 32.9138 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 33.3027 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 36.2252 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 995.6s
+  Train - Loss: 12.6673
+  Val (Avg) - Loss: 8.0126 | mAP: 0.0071 | Recall: 0.1817
+    Fire (Avg) - AP: 0.0010 | Recall: 0.0878
+    Smoke (Avg) - AP: 0.0131 | Recall: 0.2756
+  Time: 253.6s
 
 Epoch 35:
-  Train - Loss: 19.1010
-  Time: 674.4s
+  Train - Loss: 12.5769
+  Val (Avg) - Loss: 7.9745 | mAP: 0.0108 | Recall: 0.1767
+    Fire (Avg) - AP: 0.0010 | Recall: 0.0876
+    Smoke (Avg) - AP: 0.0207 | Recall: 0.2659
+  Time: 251.4s
 
 Epoch 36:
-  Train - Loss: 19.0450
-  Val (Avg) - Loss: 33.2188 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0000
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 31.8312 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 32.3868 | mAP: 0.0000 | Recall: 0.0001
-    Fire  - AP: 0.0000 | Recall: 0.0001
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 35.4383 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 996.2s
+  Train - Loss: 12.2922
+  Val (Avg) - Loss: 8.3159 | mAP: 0.0075 | Recall: 0.1435
+    Fire (Avg) - AP: 0.0004 | Recall: 0.0592
+    Smoke (Avg) - AP: 0.0146 | Recall: 0.2278
+  Time: 248.7s
 
 Epoch 37:
-  Train - Loss: 18.9117
-  Time: 673.2s
+  Train - Loss: 12.2388
+  Val (Avg) - Loss: 7.8930 | mAP: 0.0128 | Recall: 0.1806
+    Fire (Avg) - AP: 0.0006 | Recall: 0.0800
+    Smoke (Avg) - AP: 0.0250 | Recall: 0.2811
+  Time: 254.2s
 
 Epoch 38:
-  Train - Loss: 18.9849
-  Val (Avg) - Loss: 32.3746 | mAP: 0.0000 | Recall: 0.0000
-    Fire (Avg) - AP: 0.0000 | Recall: 0.0000
-    Smoke (Avg) - AP: 0.0000 | Recall: 0.0000
-  Val (CV) - Loss: 30.5689 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0001
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (UAV) - Loss: 31.9217 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Val (RS) - Loss: 34.6330 | mAP: 0.0000 | Recall: 0.0000
-    Fire  - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-  Time: 994.6s
+  Train - Loss: 12.1738
+  Val (Avg) - Loss: 7.8257 | mAP: 0.0146 | Recall: 0.1802
+    Fire (Avg) - AP: 0.0009 | Recall: 0.0861
+    Smoke (Avg) - AP: 0.0282 | Recall: 0.2743
+  Time: 253.3s
 
 Epoch 39:
-  Train - Loss: 19.1102
-  Time: 673.4s
+  Train - Loss: 12.0570
+  Val (Avg) - Loss: 7.6417 | mAP: 0.0196 | Recall: 0.1907
+    Fire (Avg) - AP: 0.0011 | Recall: 0.0953
+    Smoke (Avg) - AP: 0.0382 | Recall: 0.2862
+  Time: 253.6s
+
+Epoch 40:
+  Train - Loss: 11.9781
+  Val (Avg) - Loss: 8.3359 | mAP: 0.0116 | Recall: 0.1579
+    Fire (Avg) - AP: 0.0006 | Recall: 0.0648
+    Smoke (Avg) - AP: 0.0226 | Recall: 0.2510
+  Time: 254.5s
+
+Epoch 41:
+  Train - Loss: 12.0135
+  Val (Avg) - Loss: 8.3211 | mAP: 0.0153 | Recall: 0.1597
+    Fire (Avg) - AP: 0.0007 | Recall: 0.0832
+    Smoke (Avg) - AP: 0.0299 | Recall: 0.2362
+  Time: 253.3s
+
+Epoch 42:
+  Train - Loss: 11.9493
+  Val (Avg) - Loss: 8.3799 | mAP: 0.0130 | Recall: 0.1547
+    Fire (Avg) - AP: 0.0006 | Recall: 0.0836
+    Smoke (Avg) - AP: 0.0254 | Recall: 0.2259
+  Time: 248.3s
+
+Epoch 43:
+  Train - Loss: 11.7977
+  Val (Avg) - Loss: 7.6262 | mAP: 0.0170 | Recall: 0.1883
+    Fire (Avg) - AP: 0.0008 | Recall: 0.0812
+    Smoke (Avg) - AP: 0.0332 | Recall: 0.2953
+  Time: 255.6s
+
+Epoch 44:
+  Train - Loss: 11.7412
+  Val (Avg) - Loss: 7.6738 | mAP: 0.0190 | Recall: 0.1793
+    Fire (Avg) - AP: 0.0007 | Recall: 0.0850
+    Smoke (Avg) - AP: 0.0372 | Recall: 0.2736
+  Time: 254.5s
+
+Epoch 45:
+  Train - Loss: 11.4117
+  Val (Avg) - Loss: 7.6667 | mAP: 0.0159 | Recall: 0.1920
+    Fire (Avg) - AP: 0.0010 | Recall: 0.1027
+    Smoke (Avg) - AP: 0.0309 | Recall: 0.2812
+  Time: 254.0s
+
+Epoch 46:
+  Train - Loss: 11.6527
+  Val (Avg) - Loss: 7.8665 | mAP: 0.0169 | Recall: 0.1889
+    Fire (Avg) - AP: 0.0010 | Recall: 0.0932
+    Smoke (Avg) - AP: 0.0328 | Recall: 0.2845
+  Time: 255.4s
+
+Epoch 47:
+  Train - Loss: 11.4101
+  Val (Avg) - Loss: 7.8062 | mAP: 0.0120 | Recall: 0.1807
+    Fire (Avg) - AP: 0.0007 | Recall: 0.0879
+    Smoke (Avg) - AP: 0.0232 | Recall: 0.2735
+  Time: 254.6s
+
+Epoch 48:
+  Train - Loss: 11.3903
+  Val (Avg) - Loss: 7.8035 | mAP: 0.0131 | Recall: 0.1989
+    Fire (Avg) - AP: 0.0008 | Recall: 0.0831
+    Smoke (Avg) - AP: 0.0254 | Recall: 0.3147
+  Time: 252.3s
+
+Epoch 49:
+  Train - Loss: 11.3793
+  Val (Avg) - Loss: 7.6351 | mAP: 0.0098 | Recall: 0.1827
+    Fire (Avg) - AP: 0.0008 | Recall: 0.0802
+    Smoke (Avg) - AP: 0.0188 | Recall: 0.2853
+  Time: 251.0s
+
+Epoch 50:
+  Train - Loss: 11.2539
+  Val (Avg) - Loss: 7.8560 | mAP: 0.0180 | Recall: 0.1691
+    Fire (Avg) - AP: 0.0008 | Recall: 0.0826
+    Smoke (Avg) - AP: 0.0352 | Recall: 0.2557
+  Time: 253.5s
+
+Epoch 51:
+  Train - Loss: 11.1323
+  Val (Avg) - Loss: 7.4225 | mAP: 0.0185 | Recall: 0.1913
+    Fire (Avg) - AP: 0.0011 | Recall: 0.1010
+    Smoke (Avg) - AP: 0.0358 | Recall: 0.2816
+  Time: 255.7s
+
+Epoch 52:
+  Train - Loss: 11.0293
+  Val (Avg) - Loss: 7.6954 | mAP: 0.0182 | Recall: 0.1877
+    Fire (Avg) - AP: 0.0008 | Recall: 0.0946
+    Smoke (Avg) - AP: 0.0357 | Recall: 0.2809
+  Time: 254.3s
+
+Epoch 53:
+  Train - Loss: 11.0709
+  Val (Avg) - Loss: 7.7041 | mAP: 0.0140 | Recall: 0.2053
+    Fire (Avg) - AP: 0.0015 | Recall: 0.1048
+    Smoke (Avg) - AP: 0.0264 | Recall: 0.3059
+  Time: 253.5s
+
+Epoch 54:
+  Train - Loss: 10.9083
+  Val (Avg) - Loss: 7.5006 | mAP: 0.0118 | Recall: 0.1935
+    Fire (Avg) - AP: 0.0012 | Recall: 0.1027
+    Smoke (Avg) - AP: 0.0223 | Recall: 0.2843
+  Time: 252.4s
+
+Epoch 55:
+  Train - Loss: 10.7898
+  Val (Avg) - Loss: 7.8046 | mAP: 0.0095 | Recall: 0.1691
+    Fire (Avg) - AP: 0.0007 | Recall: 0.0849
+    Smoke (Avg) - AP: 0.0184 | Recall: 0.2533
+  Time: 250.2s
+
+Epoch 56:
+  Train - Loss: 11.0172
+  Val (Avg) - Loss: 7.5455 | mAP: 0.0158 | Recall: 0.1908
+    Fire (Avg) - AP: 0.0015 | Recall: 0.1061
+    Smoke (Avg) - AP: 0.0300 | Recall: 0.2754
+  Time: 253.0s
+
+Epoch 57:
+  Train - Loss: 10.7840
+  Val (Avg) - Loss: 7.8109 | mAP: 0.0130 | Recall: 0.1891
+    Fire (Avg) - AP: 0.0013 | Recall: 0.1058
+    Smoke (Avg) - AP: 0.0248 | Recall: 0.2723
+  Time: 254.8s
+
+Epoch 58:
+  Train - Loss: 10.6564
+  Val (Avg) - Loss: 7.5867 | mAP: 0.0134 | Recall: 0.2031
+    Fire (Avg) - AP: 0.0010 | Recall: 0.0987
+    Smoke (Avg) - AP: 0.0259 | Recall: 0.3074
+  Time: 254.5s
+
+Epoch 59:
+  Train - Loss: 10.6756
+  Val (Avg) - Loss: 7.6726 | mAP: 0.0141 | Recall: 0.1990
+    Fire (Avg) - AP: 0.0013 | Recall: 0.1099
+    Smoke (Avg) - AP: 0.0269 | Recall: 0.2882
+  Time: 255.4s
+
+Epoch 60:
+  Train - Loss: 10.5095
+  Val (Avg) - Loss: 7.5173 | mAP: 0.0129 | Recall: 0.1821
+    Fire (Avg) - AP: 0.0009 | Recall: 0.1013
+    Smoke (Avg) - AP: 0.0248 | Recall: 0.2629
+  Time: 254.0s
+
+Epoch 61:
+  Train - Loss: 10.5184
+  Val (Avg) - Loss: 7.7672 | mAP: 0.0117 | Recall: 0.2114
+    Fire (Avg) - AP: 0.0017 | Recall: 0.1155
+    Smoke (Avg) - AP: 0.0217 | Recall: 0.3073
+  Time: 251.9s
+
+Epoch 62:
+  Train - Loss: 10.5623
+  Val (Avg) - Loss: 7.6475 | mAP: 0.0087 | Recall: 0.1913
+    Fire (Avg) - AP: 0.0008 | Recall: 0.0906
+    Smoke (Avg) - AP: 0.0166 | Recall: 0.2921
+  Time: 242.8s
+
+Epoch 63:
+  Train - Loss: 10.5165
+  Val (Avg) - Loss: 7.7419 | mAP: 0.0087 | Recall: 0.1966
+    Fire (Avg) - AP: 0.0008 | Recall: 0.0852
+    Smoke (Avg) - AP: 0.0167 | Recall: 0.3080
+  Time: 253.5s
+
+Epoch 64:
+  Train - Loss: 10.4520
+  Val (Avg) - Loss: 7.3367 | mAP: 0.0096 | Recall: 0.2072
+    Fire (Avg) - AP: 0.0013 | Recall: 0.0986
+    Smoke (Avg) - AP: 0.0179 | Recall: 0.3159
+  Time: 252.5s
+
+Epoch 65:
+  Train - Loss: 10.4370
+  Val (Avg) - Loss: 7.3437 | mAP: 0.0121 | Recall: 0.2109
+    Fire (Avg) - AP: 0.0014 | Recall: 0.1112
+    Smoke (Avg) - AP: 0.0228 | Recall: 0.3107
+  Time: 253.1s
+
+Epoch 66:
+  Train - Loss: 10.4667
+  Val (Avg) - Loss: 7.4844 | mAP: 0.0152 | Recall: 0.1944
+    Fire (Avg) - AP: 0.0011 | Recall: 0.0984
+    Smoke (Avg) - AP: 0.0293 | Recall: 0.2903
+  Time: 255.5s
+
+Epoch 67:
+  Train - Loss: 10.3676
+  Val (Avg) - Loss: 7.5247 | mAP: 0.0127 | Recall: 0.1873
+    Fire (Avg) - AP: 0.0011 | Recall: 0.1005
+    Smoke (Avg) - AP: 0.0244 | Recall: 0.2741
+  Time: 255.2s
+
+Epoch 68:
+  Train - Loss: 10.3498
+  Val (Avg) - Loss: 7.5066 | mAP: 0.0140 | Recall: 0.1991
+    Fire (Avg) - AP: 0.0012 | Recall: 0.0938
+    Smoke (Avg) - AP: 0.0268 | Recall: 0.3044
+  Time: 253.9s
+
+Epoch 69:
+  Train - Loss: 10.1618
+  Val (Avg) - Loss: 7.4710 | mAP: 0.0155 | Recall: 0.2014
+    Fire (Avg) - AP: 0.0012 | Recall: 0.0945
+    Smoke (Avg) - AP: 0.0299 | Recall: 0.3083
+  Time: 252.6s
+
+Epoch 70:
+  Train - Loss: 10.1603
+  Val (Avg) - Loss: 7.6167 | mAP: 0.0134 | Recall: 0.2037
+    Fire (Avg) - AP: 0.0015 | Recall: 0.1025
+    Smoke (Avg) - AP: 0.0253 | Recall: 0.3049
+  Time: 255.6s
+
+Epoch 71:
+  Train - Loss: 10.0648
+  Val (Avg) - Loss: 7.3624 | mAP: 0.0134 | Recall: 0.2112
+    Fire (Avg) - AP: 0.0013 | Recall: 0.1043
+    Smoke (Avg) - AP: 0.0255 | Recall: 0.3182
+  Time: 253.4s
+
+Epoch 72:
+  Train - Loss: 10.1044
+  Val (Avg) - Loss: 7.4984 | mAP: 0.0120 | Recall: 0.1915
+    Fire (Avg) - AP: 0.0011 | Recall: 0.0983
+    Smoke (Avg) - AP: 0.0229 | Recall: 0.2846
+  Time: 253.4s
+
+Epoch 73:
+  Train - Loss: 9.9707
+  Val (Avg) - Loss: 7.5165 | mAP: 0.0113 | Recall: 0.2063
+    Fire (Avg) - AP: 0.0012 | Recall: 0.1046
+    Smoke (Avg) - AP: 0.0214 | Recall: 0.3080
+  Time: 254.3s
+
+Epoch 74:
+  Train - Loss: 9.8159
+  Val (Avg) - Loss: 7.3755 | mAP: 0.0114 | Recall: 0.1980
+    Fire (Avg) - AP: 0.0011 | Recall: 0.1041
+    Smoke (Avg) - AP: 0.0218 | Recall: 0.2919
+  Time: 251.2s
+
+Epoch 75:
+  Train - Loss: 9.9352
+  Val (Avg) - Loss: 7.4556 | mAP: 0.0121 | Recall: 0.2003
+    Fire (Avg) - AP: 0.0010 | Recall: 0.0866
+    Smoke (Avg) - AP: 0.0232 | Recall: 0.3140
+  Time: 243.3s
+
+Epoch 76:
+  Train - Loss: 9.9905
+  Val (Avg) - Loss: 7.6459 | mAP: 0.0142 | Recall: 0.2036
+    Fire (Avg) - AP: 0.0012 | Recall: 0.1102
+    Smoke (Avg) - AP: 0.0272 | Recall: 0.2970
+  Time: 255.3s
+
+Epoch 77:
+  Train - Loss: 9.7463
+  Val (Avg) - Loss: 7.5135 | mAP: 0.0134 | Recall: 0.2008
+    Fire (Avg) - AP: 0.0010 | Recall: 0.1014
+    Smoke (Avg) - AP: 0.0258 | Recall: 0.3003
+  Time: 253.2s
+
+Epoch 78:
+  Train - Loss: 9.7570
+  Val (Avg) - Loss: 7.5185 | mAP: 0.0116 | Recall: 0.2089
+    Fire (Avg) - AP: 0.0011 | Recall: 0.0983
+    Smoke (Avg) - AP: 0.0220 | Recall: 0.3195
+  Time: 253.8s
+
+Epoch 79:
+  Train - Loss: 9.7706
+  Val (Avg) - Loss: 7.4682 | mAP: 0.0101 | Recall: 0.2049
+    Fire (Avg) - AP: 0.0012 | Recall: 0.1106
+    Smoke (Avg) - AP: 0.0190 | Recall: 0.2992
+  Time: 252.9s
+
+Epoch 80:
+  Train - Loss: 8.9472
+  Val (Avg) - Loss: 7.2651 | mAP: 0.0116 | Recall: 0.2167
+    Fire (Avg) - AP: 0.0014 | Recall: 0.1156
+    Smoke (Avg) - AP: 0.0218 | Recall: 0.3179
+  Time: 254.0s
+
+Epoch 81:
+  Train - Loss: 8.7068
+  Val (Avg) - Loss: 7.2494 | mAP: 0.0097 | Recall: 0.2216
+    Fire (Avg) - AP: 0.0014 | Recall: 0.1184
+    Smoke (Avg) - AP: 0.0181 | Recall: 0.3249
+  Time: 252.4s
+
+Epoch 82:
+  Train - Loss: 8.5441
+  Val (Avg) - Loss: 7.3946 | mAP: 0.0109 | Recall: 0.2186
+    Fire (Avg) - AP: 0.0014 | Recall: 0.1163
+    Smoke (Avg) - AP: 0.0203 | Recall: 0.3209
+  Time: 250.9s
+
+Epoch 83:
+  Train - Loss: 8.4975
+  Val (Avg) - Loss: 7.2484 | mAP: 0.0105 | Recall: 0.2207
+    Fire (Avg) - AP: 0.0013 | Recall: 0.1142
+    Smoke (Avg) - AP: 0.0196 | Recall: 0.3272
+  Time: 252.8s
+
+Epoch 84:
+  Train - Loss: 8.4264
+  Val (Avg) - Loss: 7.2671 | mAP: 0.0105 | Recall: 0.2239
+    Fire (Avg) - AP: 0.0016 | Recall: 0.1199
+    Smoke (Avg) - AP: 0.0193 | Recall: 0.3279
+  Time: 253.8s
+
+Epoch 85:
+  Train - Loss: 8.3656
+  Val (Avg) - Loss: 7.1953 | mAP: 0.0102 | Recall: 0.2206
+    Fire (Avg) - AP: 0.0013 | Recall: 0.1168
+    Smoke (Avg) - AP: 0.0191 | Recall: 0.3244
+  Time: 251.9s
+
+Epoch 86:
+  Train - Loss: 8.3568
+  Val (Avg) - Loss: 7.3831 | mAP: 0.0104 | Recall: 0.2216
+    Fire (Avg) - AP: 0.0014 | Recall: 0.1188
+    Smoke (Avg) - AP: 0.0195 | Recall: 0.3245
+  Time: 253.3s
+
+Epoch 87:
+  Train - Loss: 8.2293
+  Val (Avg) - Loss: 7.3728 | mAP: 0.0110 | Recall: 0.2191
+    Fire (Avg) - AP: 0.0014 | Recall: 0.1165
+    Smoke (Avg) - AP: 0.0207 | Recall: 0.3216
+  Time: 255.6s
+
+Epoch 88:
+  Train - Loss: 8.1633
+  Val (Avg) - Loss: 7.5430 | mAP: 0.0112 | Recall: 0.2155
+    Fire (Avg) - AP: 0.0015 | Recall: 0.1201
+    Smoke (Avg) - AP: 0.0209 | Recall: 0.3109
+  Time: 245.8s
+
+Epoch 89:
+  Train - Loss: 8.2017
+  Val (Avg) - Loss: 7.3591 | mAP: 0.0105 | Recall: 0.2194
+    Fire (Avg) - AP: 0.0014 | Recall: 0.1178
+    Smoke (Avg) - AP: 0.0196 | Recall: 0.3209
+  Time: 253.5s
+
+Epoch 90:
+  Train - Loss: 8.1589
+  Val (Avg) - Loss: 7.2959 | mAP: 0.0105 | Recall: 0.2208
+    Fire (Avg) - AP: 0.0016 | Recall: 0.1217
+    Smoke (Avg) - AP: 0.0194 | Recall: 0.3199
+  Time: 253.2s
+
+Epoch 91:
+  Train - Loss: 8.1246
+  Val (Avg) - Loss: 7.4320 | mAP: 0.0113 | Recall: 0.2204
+    Fire (Avg) - AP: 0.0013 | Recall: 0.1170
+    Smoke (Avg) - AP: 0.0212 | Recall: 0.3238
+  Time: 252.8s
+
+Epoch 92:
+  Train - Loss: 8.1676
+  Val (Avg) - Loss: 7.4369 | mAP: 0.0115 | Recall: 0.2220
+    Fire (Avg) - AP: 0.0015 | Recall: 0.1228
+    Smoke (Avg) - AP: 0.0215 | Recall: 0.3212
+  Time: 253.1s
+
+Epoch 93:
+  Train - Loss: 7.9601
+  Val (Avg) - Loss: 7.5020 | mAP: 0.0117 | Recall: 0.2179
+    Fire (Avg) - AP: 0.0012 | Recall: 0.1127
+    Smoke (Avg) - AP: 0.0222 | Recall: 0.3230
+  Time: 255.5s
+
+Epoch 94:
+  Train - Loss: 7.9664
+  Val (Avg) - Loss: 7.4248 | mAP: 0.0112 | Recall: 0.2178
+    Fire (Avg) - AP: 0.0014 | Recall: 0.1178
+    Smoke (Avg) - AP: 0.0210 | Recall: 0.3178
+  Time: 254.4s
+
+Epoch 95:
+  Train - Loss: 7.9617
+  Val (Avg) - Loss: 7.4359 | mAP: 0.0117 | Recall: 0.2164
+    Fire (Avg) - AP: 0.0013 | Recall: 0.1151
+    Smoke (Avg) - AP: 0.0221 | Recall: 0.3178
+  Time: 248.7s
+
+Epoch 96:
+  Train - Loss: 7.9970
+  Val (Avg) - Loss: 7.5133 | mAP: 0.0138 | Recall: 0.2131
+    Fire (Avg) - AP: 0.0013 | Recall: 0.1171
+    Smoke (Avg) - AP: 0.0263 | Recall: 0.3090
+  Time: 251.4s
+
+Epoch 97:
+  Train - Loss: 7.9959
+  Val (Avg) - Loss: 7.5199 | mAP: 0.0128 | Recall: 0.2130
+    Fire (Avg) - AP: 0.0015 | Recall: 0.1140
+    Smoke (Avg) - AP: 0.0240 | Recall: 0.3121
+  Time: 252.9s
+
+Epoch 98:
+  Train - Loss: 7.8772
+  Val (Avg) - Loss: 7.5521 | mAP: 0.0136 | Recall: 0.2110
+    Fire (Avg) - AP: 0.0014 | Recall: 0.1125
+    Smoke (Avg) - AP: 0.0258 | Recall: 0.3095
+  Time: 254.6s
+
+Epoch 99:
+  Train - Loss: 7.9790
+  Val (Avg) - Loss: 7.6198 | mAP: 0.0139 | Recall: 0.2150
+    Fire (Avg) - AP: 0.0015 | Recall: 0.1152
+    Smoke (Avg) - AP: 0.0264 | Recall: 0.3149
+  Time: 252.9s
 
 
 ====================================================================================================
 FINAL RESULTS
 ====================================================================================================
-Total Time: 14:31:24
-Best Val Loss: 30.7550 (Epoch 0)
-Best Val mAP: 0.0002
+Total Time: 7:04:58
+Best Val Loss: 7.1953 (Epoch 85)
+Best Val mAP: 0.0200
 
 Test Results:
-  Loss: 31.4442
-  mAP: 0.0000 | mAP50: 0.0000 | Recall: 0.0000
-  Fire - AP: 0.0000 | Recall: 0.0000
-  Smoke - AP: 0.0000 | Recall: 0.0000
-
-  CV Set:
-    Loss: 28.2425
-    mAP: 0.0000 | Recall: 0.0000
-    Fire - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-
-  UAV Set:
-    Loss: 30.7323
-    mAP: 0.0000 | Recall: 0.0000
-    Fire - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
-
-  RS Set:
-    Loss: 35.3577
-    mAP: 0.0000 | Recall: 0.0000
-    Fire - AP: 0.0000 | Recall: 0.0000
-    Smoke - AP: 0.0000 | Recall: 0.0000
+  Loss: 7.5132
+  mAP: 0.0088 | mAP50: 0.0229 | Recall: 0.2205
+  Fire - AP: 0.0027 | Recall: 0.1780
+  Smoke - AP: 0.0149 | Recall: 0.2631

@@ -1,15 +1,57 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 from typing import Optional
 
 from util.misc import NestedTensor, nested_tensor_from_tensor_list
 from .backbone import build_backbone
 from .transformer import build_transformer, TransformerDecoder
-from .superpixel.feature_pooling import SuperpixelFeaturePooling
+from .superpixel.pool import SuperpixelPool
+from .superpixel.sca import SCA
 from .superpixel.superpixel_encoder import SuperpixelTransformerEncoder
 from .detr import MLP, SetCriterion, PostProcess
 from .matcher import build_matcher
+
+
+class SinusoidalPositionEmbedding2D(nn.Module):
+    """
+    Sinusoidal positional encoding for 2D coordinates (like superpixel centroids).
+    Same approach as DETR's PositionEmbeddingSine but for arbitrary (y, x) coordinates.
+    """
+    def __init__(self, num_pos_feats=128, temperature=10000, scale=2 * math.pi):
+        super().__init__()
+        self.num_pos_feats = num_pos_feats
+        self.temperature = temperature
+        self.scale = scale
+        
+    def forward(self, centroids):
+        """
+        Args:
+            centroids: (B, K, 2) with normalized (y, x) coordinates in [0, 1]
+        Returns:
+            pos: (B, K, num_pos_feats * 2) positional embeddings
+        """
+        # centroids[:, :, 0] = y, centroids[:, :, 1] = x
+        # Scale to [0, 2*pi]
+        y_embed = centroids[:, :, 0:1] * self.scale  # (B, K, 1)
+        x_embed = centroids[:, :, 1:2] * self.scale  # (B, K, 1)
+        
+        dim_t = torch.arange(self.num_pos_feats, dtype=torch.float32, device=centroids.device)
+        dim_t = self.temperature ** (2 * (dim_t // 2) / self.num_pos_feats)
+        
+        # (B, K, num_pos_feats)
+        pos_x = x_embed / dim_t
+        pos_y = y_embed / dim_t
+        
+        # Apply sin/cos
+        pos_x = torch.stack((pos_x[:, :, 0::2].sin(), pos_x[:, :, 1::2].cos()), dim=3).flatten(2)
+        pos_y = torch.stack((pos_y[:, :, 0::2].sin(), pos_y[:, :, 1::2].cos()), dim=3).flatten(2)
+        
+        # Concatenate y and x embeddings
+        pos = torch.cat((pos_y, pos_x), dim=2)  # (B, K, num_pos_feats * 2)
+        
+        return pos
 
 
 class DETRSlic(nn.Module):
@@ -25,21 +67,34 @@ class DETRSlic(nn.Module):
                  slic_compactness: float = 10.0,
                  pooling_method: str = 'mean',
                  use_superpixel_encoder: bool = True,
-                 aux_loss: bool = False):
+                 aux_loss: bool = False,
+                 use_sca: bool = False,
+                 use_fourier_shape: bool = True,
+                 n_fourier_coeffs: int = 16):
         super().__init__()
         self.num_queries = num_queries
         self.backbone = backbone
         self.aux_loss = aux_loss
         self.use_superpixel_encoder = use_superpixel_encoder
+        self.use_sca = use_sca
         
         hidden_dim = transformer.d_model
         
         # Feature pooling module
-        self.superpixel_pooling = SuperpixelFeaturePooling(
-            pooling_method=pooling_method,
-            add_spatial_encoding=True,
-            feature_dim=hidden_dim
+        self.superpixel_pool = SuperpixelPool(
+            in_dim=hidden_dim,
+            out_dim=hidden_dim,
+            max_superpixels=n_superpixels,
+            pooling_type=pooling_method,
+            use_fourier_shape=use_fourier_shape,
+            n_fourier_coeffs=n_fourier_coeffs
         )
+        if use_sca:
+            self.sca = SCA(dim=hidden_dim)
+        
+        # Sinusoidal Positional Encoding for superpixel centroids
+        # Uses the same proven approach as DETR's position encoding
+        self.pos_embed = SinusoidalPositionEmbedding2D(num_pos_feats=hidden_dim // 2)
         
         # Projection layer for backbone features
         self.input_proj = nn.Conv2d(backbone.num_channels, hidden_dim, kernel_size=1)
@@ -65,8 +120,8 @@ class DETRSlic(nn.Module):
         self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
         self.query_embed = nn.Embedding(num_queries, hidden_dim)
         
-        # Positional encoding for superpixels
-        self.superpixel_pos_embed = nn.Linear(4, hidden_dim)  # spatial features -> pos encoding
+        # Use default PyTorch initialization (same as official DETR)
+        # No custom bias initialization - let the model learn from scratch
         
     def forward(self, samples: NestedTensor, targets: Optional[list] = None):
         """
@@ -121,21 +176,29 @@ class DETRSlic(nn.Module):
             )
         
         # Pool features within superpixels
-        superpixel_features, superpixel_mask = self.superpixel_pooling(
-            src_proj, superpixel_maps, num_superpixels
-        )  # (B, max_segments, hidden_dim), (B, max_segments)
-        
-        # Compute positional encoding for superpixels
-        spatial_features = self.superpixel_pooling.compute_spatial_features(
-            superpixel_maps, num_superpixels
+        # Pass original images for color stats calculation
+        superpixel_features, superpixel_mask, centroids = self.superpixel_pool(
+            src_proj, superpixel_maps, images=samples.tensors
         )
-        superpixel_pos = self.superpixel_pos_embed(spatial_features)  # (B, max_segments, hidden_dim)
+        
+        # Sinusoidal positional encoding from centroids
+        # (B, K, 2) -> (B, K, hidden_dim)
+        superpixel_pos = self.pos_embed(centroids)
+        
+        if self.use_sca:
+            # Apply SCA
+            # pixel_feats needs to be (B, H*W, C)
+            pixel_feats_flat = src_proj.flatten(2).transpose(1, 2)
+            # mask for SCA: True indicates padding. superpixel_mask: True indicates valid.
+            # So we pass ~superpixel_mask
+            superpixel_features, _ = self.sca(pixel_feats_flat, superpixel_features, mask=~superpixel_mask)
         
         # Prepare for transformer: (N_superpixels, B, C)
         superpixel_features = superpixel_features.permute(1, 0, 2)
+        # Use sinusoidal positional encoding
         superpixel_pos = superpixel_pos.permute(1, 0, 2)
         
-        # Invert mask for transformer (True = valid, False = padding)
+        # Invert mask for transformer (True = padding, False = valid)
         superpixel_padding_mask = ~superpixel_mask  # (B, max_segments)
         
         if self.use_superpixel_encoder:
@@ -206,7 +269,10 @@ def build_detr_slic(args):
         slic_compactness=getattr(args, 'slic_compactness', 10.0),
         pooling_method=getattr(args, 'pooling_method', 'mean'),
         use_superpixel_encoder=getattr(args, 'use_superpixel_encoder', True),
-        aux_loss=args.aux_loss
+        aux_loss=args.aux_loss,
+        use_sca=getattr(args, 'use_sca', False),
+        use_fourier_shape=getattr(args, 'use_fourier_shape', True),
+        n_fourier_coeffs=getattr(args, 'n_fourier_coeffs', 16)
     )
     
     # Criterion and postprocessors (reuse from DETR)
@@ -220,8 +286,17 @@ def build_detr_slic(args):
         weight_dict.update(aux_weight_dict)
     
     losses = ['labels', 'boxes', 'cardinality']
+    
+    # Get focal loss parameters if available
+    use_focal_loss = getattr(args, 'use_focal_loss', False)
+    focal_alpha = getattr(args, 'focal_alpha', 0.25)
+    focal_gamma = getattr(args, 'focal_gamma', 2.0)
+    
     criterion = SetCriterion(num_classes, matcher=matcher, weight_dict=weight_dict,
-                             eos_coef=args.eos_coef, losses=losses)
+                             eos_coef=args.eos_coef, losses=losses,
+                             use_focal_loss=use_focal_loss,
+                             focal_alpha=focal_alpha,
+                             focal_gamma=focal_gamma)
     criterion.to(device)
     
     postprocessors = {'bbox': PostProcess()}

@@ -40,6 +40,9 @@ class DETR(nn.Module):
         self.input_proj = nn.Conv2d(backbone.num_channels, hidden_dim, kernel_size=1)
         self.backbone = backbone
         self.aux_loss = aux_loss
+        
+        # Use default PyTorch initialization (same as official DETR)
+        # No custom bias initialization - let the model learn from scratch
 
     def forward(self, samples: NestedTensor, targets=None):
         """ The forward expects a NestedTensor, which consists of:
@@ -86,7 +89,8 @@ class SetCriterion(nn.Module):
         1) we compute hungarian assignment between ground truth boxes and the outputs of the model
         2) we supervise each pair of matched ground-truth / prediction (supervise class and box)
     """
-    def __init__(self, num_classes, matcher, weight_dict, eos_coef, losses):
+    def __init__(self, num_classes, matcher, weight_dict, eos_coef, losses,
+                 use_focal_loss=False, focal_alpha=0.25, focal_gamma=2.0):
         """ Create the criterion.
         Parameters:
             num_classes: number of object categories, omitting the special no-object category
@@ -94,6 +98,9 @@ class SetCriterion(nn.Module):
             weight_dict: dict containing as key the names of the losses and as values their relative weight.
             eos_coef: relative classification weight applied to the no-object category
             losses: list of all the losses to be applied. See get_loss for list of available losses.
+            use_focal_loss: whether to use focal loss instead of cross entropy
+            focal_alpha: focal loss alpha parameter (class weight)
+            focal_gamma: focal loss gamma parameter (focusing parameter)
         """
         super().__init__()
         self.num_classes = num_classes
@@ -101,12 +108,16 @@ class SetCriterion(nn.Module):
         self.weight_dict = weight_dict
         self.eos_coef = eos_coef
         self.losses = losses
+        self.use_focal_loss = use_focal_loss
+        self.focal_alpha = focal_alpha
+        self.focal_gamma = focal_gamma
+        
         empty_weight = torch.ones(self.num_classes + 1)
         empty_weight[-1] = self.eos_coef
         self.register_buffer('empty_weight', empty_weight)
 
     def loss_labels(self, outputs, targets, indices, num_boxes, log=True):
-        """Classification loss (NLL)
+        """Classification loss (Cross Entropy or Focal Loss)
         targets dicts must contain the key "labels" containing a tensor of dim [nb_target_boxes]
         """
         assert 'pred_logits' in outputs
@@ -118,13 +129,70 @@ class SetCriterion(nn.Module):
                                     dtype=torch.int64, device=src_logits.device)
         target_classes[idx] = target_classes_o
 
-        loss_ce = F.cross_entropy(src_logits.transpose(1, 2), target_classes, self.empty_weight)
+        if self.use_focal_loss:
+            # Focal Loss implementation
+            loss_ce = self.focal_loss(src_logits, target_classes, self.empty_weight,
+                                       self.focal_alpha, self.focal_gamma)
+        else:
+            # Standard cross entropy
+            loss_ce = F.cross_entropy(src_logits.transpose(1, 2), target_classes, self.empty_weight)
+        
         losses = {'loss_ce': loss_ce}
 
         if log:
             # TODO this should probably be a separate loss, not hacked in this one here
             losses['class_error'] = 100 - accuracy(src_logits[idx], target_classes_o)[0]
         return losses
+
+    def focal_loss(self, logits, targets, class_weights, alpha=0.25, gamma=2.0):
+        """
+        Focal Loss for multi-class classification.
+        
+        FL(p_t) = -alpha_t * (1 - p_t)^gamma * log(p_t)
+        
+        Args:
+            logits: [batch, num_queries, num_classes+1]
+            targets: [batch, num_queries] with class indices
+            class_weights: [num_classes+1] weights per class
+            alpha: weighting factor for rare classes
+            gamma: focusing parameter (higher = more focus on hard examples)
+        """
+        batch_size, num_queries, num_classes = logits.shape
+        
+        # Compute softmax probabilities
+        probs = F.softmax(logits, dim=-1)  # [B, Q, C]
+        
+        # Flatten for easier indexing
+        logits_flat = logits.view(-1, num_classes)  # [B*Q, C]
+        targets_flat = targets.view(-1)  # [B*Q]
+        probs_flat = probs.view(-1, num_classes)  # [B*Q, C]
+        
+        # Get probability of the target class
+        p_t = probs_flat.gather(1, targets_flat.unsqueeze(1)).squeeze(1)  # [B*Q]
+        
+        # Compute focal weight: (1 - p_t)^gamma
+        focal_weight = (1 - p_t) ** gamma  # [B*Q]
+        
+        # Compute cross entropy: -log(p_t)
+        ce_loss = F.cross_entropy(logits_flat, targets_flat, reduction='none')  # [B*Q]
+        
+        # Apply focal weight
+        focal_loss = focal_weight * ce_loss  # [B*Q]
+        
+        # Apply class weights (including eos_coef for no-object class)
+        class_weight_per_sample = class_weights[targets_flat]  # [B*Q]
+        weighted_focal_loss = focal_loss * class_weight_per_sample
+        
+        # Apply alpha weighting (optional - balances foreground vs background)
+        # For no-object class, use (1 - alpha), for object classes use alpha
+        alpha_weight = torch.where(
+            targets_flat == self.num_classes,  # no-object class
+            torch.tensor(1 - alpha, device=logits.device),
+            torch.tensor(alpha, device=logits.device)
+        )
+        weighted_focal_loss = weighted_focal_loss * alpha_weight
+        
+        return weighted_focal_loss.mean()
 
     @torch.no_grad()
     def loss_cardinality(self, outputs, targets, indices, num_boxes):
@@ -302,19 +370,20 @@ class MLP(nn.Module):
 
 
 def build(args):
-    # the `num_classes` naming here is somewhat misleading.
-    # it indeed corresponds to `max_obj_id + 1`, where max_obj_id
-    # is the maximum id for a class in your dataset. For example,
-    # COCO has a max_obj_id of 90, so we pass `num_classes` to be 91.
-    # As another example, for a dataset that has a single class with id 1,
-    # you should pass `num_classes` to be 2 (max_obj_id + 1).
-    # For more details on this, check the following discussion
-    # https://github.com/facebookresearch/detr/issues/108#issuecomment-650269223
-    num_classes = 20 if args.dataset_file != 'coco' else 91
-    if args.dataset_file == "coco_panoptic":
-        # for panoptic, we just add a num_classes that is large enough to hold
-        # max_obj_id + 1, but the exact value doesn't really matter
-        num_classes = 250
+    """
+    Build DETR model with criterion and postprocessors.
+    
+    For custom datasets, set args.num_classes in your config file.
+    For COCO/panoptic, the original logic is preserved as fallback.
+    """
+    # Use args.num_classes if provided (for custom datasets like fire/smoke)
+    if hasattr(args, 'num_classes') and args.num_classes is not None:
+        num_classes = args.num_classes
+    else:
+        # Fallback to original DETR logic for COCO datasets
+        num_classes = 20 if args.dataset_file != 'coco' else 91
+        if args.dataset_file == "coco_panoptic":
+            num_classes = 250
     device = torch.device(args.device)
 
     backbone = build_backbone(args)
@@ -346,8 +415,17 @@ def build(args):
     losses = ['labels', 'boxes', 'cardinality']
     if args.masks:
         losses += ["masks"]
+    
+    # Get focal loss parameters if available
+    use_focal_loss = getattr(args, 'use_focal_loss', False)
+    focal_alpha = getattr(args, 'focal_alpha', 0.25)
+    focal_gamma = getattr(args, 'focal_gamma', 2.0)
+    
     criterion = SetCriterion(num_classes, matcher=matcher, weight_dict=weight_dict,
-                             eos_coef=args.eos_coef, losses=losses)
+                             eos_coef=args.eos_coef, losses=losses,
+                             use_focal_loss=use_focal_loss,
+                             focal_alpha=focal_alpha,
+                             focal_gamma=focal_gamma)
     criterion.to(device)
     postprocessors = {'bbox': PostProcess()}
     if args.masks:

@@ -1,6 +1,9 @@
 """
 Main training script for DETR-SLIC Fire and Smoke Detection.
 Uses YAML config files instead of argparse for easier configuration management.
+
+Per-subset training: Train and evaluate on a single subset (CV, UAV, or RS).
+Example: python main.py --config configs/detr_baseline.yaml --subset CV
 """
 import argparse
 import datetime
@@ -21,17 +24,28 @@ from engine import train_one_epoch, evaluate
 from models import build_model
 
 
-def main(config_path):
+def main(config_path, subset=None):
     """
     Main training function.
     
     Args:
         config_path: Path to YAML configuration file
+        subset: Optional subset to train/eval on (CV, UAV, RS). If None, uses config value or trains on all data.
     """
     # Load and validate configuration
     print(f"Loading config from: {config_path}")
     args = load_config(config_path)
     args = validate_config(args)
+    
+    # Handle subset filtering
+    # Priority: CLI argument > config file > None (all data)
+    filter_category = subset or getattr(args, 'subset', None)
+    
+    # Update output directory to include subset if specified
+    if filter_category:
+        base_output = getattr(args, 'output_dir', 'outputs/default')
+        args.output_dir = f"{base_output}/{filter_category.lower()}"
+        args.model_name = f"{args.model_name}_{filter_category.lower()}"
     
     # Initialize distributed training if needed
     if getattr(args, 'distributed', False):
@@ -43,6 +57,7 @@ def main(config_path):
     print(f"Model: {args.model_name}")
     print(f"Use SLIC: {args.use_slic}")
     print(f"Dataset: {args.data_path}")
+    print(f"Subset: {filter_category if filter_category else 'ALL'}")
     print(f"Num classes: {args.num_classes}")
     print(f"Batch size: {args.batch_size}")
     print(f"Epochs: {args.epochs}")
@@ -88,18 +103,11 @@ def main(config_path):
     
     # Build data loaders
     print("\nLoading datasets...")
-    data_loader_train = build_data_loader('train', args)
-    
-    # Build validation loaders for each category
-    val_categories = ['CV', 'UAV', 'RS']
-    data_loaders_val = {}
-    for cat in val_categories:
-        print(f"Building validation loader for {cat}...")
-        data_loaders_val[cat] = build_data_loader('val', args, filter_category=cat)
+    data_loader_train = build_data_loader('train', args, filter_category=filter_category)
+    data_loader_val = build_data_loader('val', args, filter_category=filter_category)
     
     print(f"Training samples: {len(data_loader_train.dataset)}")
-    for cat, loader in data_loaders_val.items():
-        print(f"Validation samples ({cat}): {len(loader.dataset)}")
+    print(f"Validation samples: {len(data_loader_val.dataset)}")
     
     # Create output directory
     output_dir = Path(args.output_dir)
@@ -141,15 +149,14 @@ def main(config_path):
         print("EVALUATION MODE")
         print("="*80)
         
-        for cat, loader in data_loaders_val.items():
-            print(f"\nEvaluating on {cat} set:")
-            test_stats = evaluate(
-                model, criterion, postprocessors,
-                loader, device, args.output_dir
-            )
-            print(f"\n{cat} Evaluation Results:")
-            for k, v in test_stats.items():
-                print(f"  {k}: {v:.4f}" if isinstance(v, (int, float)) else f"  {k}: {v}")
+        print(f"\nEvaluating on {'subset ' + filter_category if filter_category else 'all data'}:")
+        test_stats = evaluate(
+            model, criterion, postprocessors,
+            data_loader_val, device, args.output_dir
+        )
+        print(f"\nEvaluation Results:")
+        for k, v in test_stats.items():
+            print(f"  {k}: {v:.4f}" if isinstance(v, (int, float)) else f"  {k}: {v}")
         return
     
     # Training loop
@@ -172,32 +179,11 @@ def main(config_path):
         # Validation
         val_stats = {}
         if epoch % getattr(args, 'eval_every', 1) == 0:
-            for cat, loader in data_loaders_val.items():
-                print(f"\nValidating on {cat}...")
-                cat_stats = evaluate(
-                    model, criterion, postprocessors,
-                    loader, device, args.output_dir
-                )
-                # Prefix keys with category
-                for k, v in cat_stats.items():
-                    val_stats[f'{cat}_{k}'] = v
-            
-            # Compute average validation loss for checkpointing
-            val_losses = [val_stats[f'{cat}_loss'] for cat in val_categories if f'{cat}_loss' in val_stats]
-            if val_losses:
-                val_stats['loss'] = sum(val_losses) / len(val_losses)
-                # Also compute average AP if available
-                val_aps = [val_stats[f'{cat}_AP'] for cat in val_categories if f'{cat}_AP' in val_stats]
-                if val_aps:
-                    val_stats['AP'] = sum(val_aps) / len(val_aps)
-                
-                # Compute average per-class metrics
-                for metric in ['AP', 'Recall']:
-                    for cls in ['fire', 'smoke']:
-                        key = f'{metric}_{cls}'
-                        values = [val_stats[f'{cat}_{key}'] for cat in val_categories if f'{cat}_{key}' in val_stats]
-                        if values:
-                            val_stats[key] = sum(values) / len(values)
+            print(f"\nValidating...")
+            val_stats = evaluate(
+                model, criterion, postprocessors,
+                data_loader_val, device, args.output_dir
+            )
         
         # Calculate epoch time
         epoch_time = time.time() - epoch_start_time
@@ -232,41 +218,20 @@ def main(config_path):
     test_stats = {}
     try:
         print("\nRunning final evaluation on test set...")
-        # Build test loaders for each category
-        data_loaders_test = {}
-        for cat in val_categories:
-            data_loaders_test[cat] = build_data_loader('test', args, filter_category=cat)
-            
-        for cat, loader in data_loaders_test.items():
-            print(f"Testing on {cat}...")
-            cat_stats = evaluate(
-                model, criterion, postprocessors,
-                loader, device, args.output_dir
-            )
-            for k, v in cat_stats.items():
-                test_stats[f'{cat}_{k}'] = v
+        data_loader_test = build_data_loader('test', args, filter_category=filter_category)
         
-        # Compute average test metrics
-        test_losses = [test_stats[f'{cat}_loss'] for cat in val_categories if f'{cat}_loss' in test_stats]
-        if test_losses:
-            test_stats['loss'] = sum(test_losses) / len(test_losses)
-            
-        test_aps = [test_stats[f'{cat}_AP'] for cat in val_categories if f'{cat}_AP' in test_stats]
-        if test_aps:
-            test_stats['AP'] = sum(test_aps) / len(test_aps)
-            
-        # Compute average per-class metrics for test
-        for metric in ['AP', 'Recall']:
-            for cls in ['fire', 'smoke']:
-                key = f'{metric}_{cls}'
-                values = [test_stats[f'{cat}_{key}'] for cat in val_categories if f'{cat}_{key}' in test_stats]
-                if values:
-                    test_stats[key] = sum(values) / len(values)
+        print(f"Test samples: {len(data_loader_test.dataset)}")
+        test_stats = evaluate(
+            model, criterion, postprocessors,
+            data_loader_test, device, args.output_dir
+        )
         
         # Save test results
         if utils.is_main_process():
-            with (logs_dir / "test_results.json").open("w") as f:
+            test_results_path = output_dir / "test_results.json"
+            with test_results_path.open("w") as f:
                 json.dump(test_stats, f, indent=2)
+            print(f"Test results saved to: {test_results_path}")
     except Exception as e:
         print(f"⚠ Test evaluation skipped: {e}")
     
@@ -278,7 +243,7 @@ def main(config_path):
         try:
             print("Generating training plots...")
             plot_logs(
-                logs=[output_dir],
+                logs=[logs_dir],  # Use logs_dir where log.txt is actually saved
                 fields=('loss', 'mAP', 'mAP50', 'Recall'),
                 ewm_col=0,
                 log_name='log.txt'
@@ -294,6 +259,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('DETR-SLIC training script')
     parser.add_argument('--config', type=str, required=True,
                        help='Path to YAML config file (e.g., configs/detr_slic.yaml)')
+    parser.add_argument('--subset', type=str, choices=['CV', 'UAV', 'RS'], default=None,
+                       help='Subset to train on (CV, UAV, or RS). Default: train on all data.')
     cmd_args = parser.parse_args()
     
-    main(cmd_args.config)
+    main(cmd_args.config, cmd_args.subset)

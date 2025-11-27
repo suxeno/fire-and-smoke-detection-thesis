@@ -51,6 +51,13 @@ def plot_logs(logs, fields=('loss', 'mAP', 'mAP50', 'Recall'), ewm_col=0, log_na
     }
 
     for df in dfs:
+        # Remove duplicate epochs - keep the last entry for each epoch
+        if 'epoch' in df.columns:
+            df = df.drop_duplicates(subset=['epoch'], keep='last').sort_values('epoch').reset_index(drop=True)
+            x_values = df['epoch']
+        else:
+            x_values = df.index
+            
         for j, field in enumerate(fields):
             ax = axs[j]
             
@@ -60,12 +67,12 @@ def plot_logs(logs, fields=('loss', 'mAP', 'mAP50', 'Recall'), ewm_col=0, log_na
             # 1. Train
             if f'train_{field}' in df.columns:
                 data = df[f'train_{field}'].interpolate().ewm(com=ewm_col).mean()
-                ax.plot(data, color=styles['train']['color'], linestyle=styles['train']['style'], label=styles['train']['label'])
+                ax.plot(x_values, data, color=styles['train']['color'], linestyle=styles['train']['style'], label=styles['train']['label'])
             
             # 2. Val Average
             if f'val_{field}' in df.columns:
                 data = df[f'val_{field}'].interpolate().ewm(com=ewm_col).mean()
-                ax.plot(data, color=styles['val']['color'], linestyle=styles['val']['style'], label=styles['val']['label'])
+                ax.plot(x_values, data, color=styles['val']['color'], linestyle=styles['val']['style'], label=styles['val']['label'])
             
             # 3. Val Categories
             for cat in ['CV', 'UAV', 'RS']:
@@ -73,16 +80,14 @@ def plot_logs(logs, fields=('loss', 'mAP', 'mAP50', 'Recall'), ewm_col=0, log_na
                 if col_name in df.columns:
                     data = df[col_name].interpolate().ewm(com=ewm_col).mean()
                     style = styles.get(f'val_{cat}', {'color': 'gray', 'style': '--'})
-                    ax.plot(data, color=style['color'], linestyle=style['style'], label=style['label'])
+                    ax.plot(x_values, data, color=style['color'], linestyle=style['style'], label=style['label'])
             
             # Special handling for mAP/AP if not found directly
-            if field == 'mAP' and 'val_AP' not in df.columns:
-                # Try to find val_AP or val_CV_AP etc if field is just 'mAP'
-                # But usually we pass 'mAP' and expect 'val_mAP' or 'val_AP'
-                # If the user passes 'mAP', we map it to 'AP' in the log
+            if field == 'mAP' and f'val_{field}' not in df.columns:
+                # Try to find val_AP if field is 'mAP'
                 if 'val_AP' in df.columns:
                      data = df['val_AP'].interpolate().ewm(com=ewm_col).mean()
-                     ax.plot(data, color=styles['val']['color'], linestyle=styles['val']['style'], label=styles['val']['label'])
+                     ax.plot(x_values, data, color=styles['val']['color'], linestyle=styles['val']['style'], label=styles['val']['label'])
 
             ax.set_title(field)
             ax.set_xlabel('Epoch')

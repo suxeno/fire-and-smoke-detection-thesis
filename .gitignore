@@ -52,11 +52,8 @@ env/
 .venv
 
 # PyTorch / Deep Learning
-# Model checkpoints (keep structure, ignore large files)
-outputs/*/checkpoint_*.pth
-outputs/*/model_*.pth
-outputs/*/*.pth
-!outputs/README.md
+# Model checkpoints - ignore ALL .pth files in outputs
+outputs/**/*.pth
 
 # TensorBoard logs
 outputs/*/runs/
@@ -73,13 +70,9 @@ datasets/
 datasets_sample/
 
 # Output Files
-# Training outputs
-outputs/*/log.txt
-outputs/*/checkpoint_*.pth
+# Training outputs (already covered by outputs/**/*.pth above)
 outputs/*/test_results.json
 outputs/*/test_results/
-outputs/detr_slic/*.pth
-outputs/detr_baseline/*.pth
 outputs/logs/*.log
 outputs/plots/*.png
 outputs/plots/*.pdf
