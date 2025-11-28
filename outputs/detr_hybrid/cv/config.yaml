@@ -1,0 +1,108 @@
+# DETR-SLIC Configuration for Fire and Smoke Detection
+
+# Model Architecture
+model_name: 'detr_hybrid'
+# (migrated from old detr_slic with backbone)
+
+# Backbone
+backbone: 'resnet50'  # Options: resnet18, resnet34, resnet50, resnet101
+dilation: true  # Use dilated convolutions in last stage
+position_embedding: 'sine'  # Options: sine, learned
+masks: false  # No segmentation masks for detection
+
+# Transformer
+hidden_dim: 256  # Model dimension
+dropout: 0.1
+nheads: 8  # Number of attention heads
+dim_feedforward: 2048  # FFN dimension
+enc_layers: 6  # Number of encoder layers
+dec_layers: 6  # Number of decoder layers
+pre_norm: false  # Pre-normalization in transformer
+num_queries: 100  # Number of object queries
+
+# SLIC Superpixel Settings
+n_superpixels: 300  # Number of superpixels per image
+slic_compactness: 20.0  # SLIC compactness parameter (higher = more compact)
+pooling_method: 'mean'  # Options: mean, max, sum
+use_superpixel_encoder: true  # Use superpixel transformer encoder
+
+# Dataset
+dataset_file: 'fire_smoke'  # Custom dataset
+num_classes: 2  # fire, smoke
+subset: 'CV'  # Options: CV, UAV, RS, or '' (empty for all data)
+
+# Data Paths
+use_sample: true  # Set to false for full dataset
+data_path: 'datasets_sample'  # Change to 'datasets' for full dataset
+
+# Data Augmentation (minimal for large dataset)
+scales: [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]  # Multi-scale training
+max_size: 1333  # Maximum image dimension
+
+# Training
+# Optimizer
+lr: 1.0e-4 
+lr_backbone: 1.0e-5 
+weight_decay: 0.05 
+clip_max_norm: 0.1  # Gradient clipping
+
+# Learning rate schedule
+lr_drop: 120  # Epoch to drop learning rate (delayed for longer training)
+epochs: 150  # Extended training - DETR needs more epochs than CNN-based detectors
+
+# Batch and workers
+batch_size: 4  # Reduced batch size for better generalization
+num_workers: 4  # Data loading workers
+
+# Loss weights
+set_cost_class: 2  # Increased - prioritize classification matching
+set_cost_bbox: 5  # L1 bbox cost in matching
+set_cost_giou: 2  # GIoU cost in matching
+
+bbox_loss_coef: 5  # L1 bbox loss weight
+giou_loss_coef: 2  # GIoU loss weight
+eos_coef: 0.02  # CRITICAL: Lower eos_coef for 2-class (was 0.1 for 91 classes)
+
+# Focal Loss - helps with class imbalance (fire vs smoke)
+use_focal_loss: true  # Enable focal loss for better handling of hard examples
+focal_alpha: 0.25  # Standard focal loss alpha
+focal_gamma: 2.0  # Standard focal loss gamma
+
+use_fourier_shape: false  # Enable Fourier descriptors for shape features
+n_fourier_coeffs: 16  # Number of Fourier coefficients if enabled
+
+aux_loss: true  # Auxiliary decoding losses (improves training)
+
+# Validation
+eval_every: 1  # Evaluate every N epochs
+
+# System
+device: 'cuda'  # Options: cuda, cpu
+seed: 69
+output_dir: 'outputs/detr_slic'  # Output directory for this experiment
+resume: ''  # Path to checkpoint to resume from
+start_epoch: 0
+
+# Distributed Training (optional)
+world_size: 1  # Number of GPUs
+dist_url: 'env://'  # Distributed URL
+distributed: false  # Enable for multi-GPU training
+
+# Evaluation
+eval: false  # Set true for evaluation-only mode
+visualize: false  # Visualize predictions during evaluation
+
+# Logging
+print_freq: 100  # Print training stats every N iterations
+tensorboard: true  # Enable tensorboard logging
+wandb: false  # Enable Weights & Biases logging (set to true if you use wandb)
+wandb_project: 'fire-smoke-detection'  # WandB project name
+wandb_run_name: 'detr-slic-initial'  # WandB run name
+
+# Notes for Training:
+# 1. This config uses sample dataset (2000 images) for quick initial testing
+# 2. To use full dataset: set use_sample=false, data_path='datasets'
+# 3. Batch size of 4 for RTX 4090 (24GB VRAM) - reduce if OOM
+# 4. SLIC reduces encoder tokens from ~2000 to ~300 
+# 5. Expected training time on sample: ~8-10 hours on single GPU
+# 6. For comparison with baseline DETR, use detr_baseline.yaml

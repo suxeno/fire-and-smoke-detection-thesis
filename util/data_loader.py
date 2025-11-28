@@ -12,7 +12,7 @@ from .misc import collate_fn
 from .data_transform import make_data_transforms
 
 class DatasetsLoader(torch.utils.data.Dataset):
-    def __init__(self, img_folder, ann_file, transforms=None, return_masks=False, filter_category=None, superpixel_path=None):
+    def __init__(self, img_folder, ann_file, transforms=None, return_masks=False, filter_category=None, superpixel_path=None, use_multiscale=False, superpixel_scales=None):
         """
         Args:
             img_folder: Path to images root directory (e.g., 'datasets/images')
@@ -21,12 +21,16 @@ class DatasetsLoader(torch.utils.data.Dataset):
             return_masks: Whether to return segmentation masks (not used for detection)
             filter_category: Optional category string to filter images (e.g., 'CV', 'UAV', 'RS')
             superpixel_path: Path to pre-computed superpixels (e.g., 'datasets/superpixels')
+            use_multiscale: Whether to load multi-scale superpixel maps
+            superpixel_scales: List of superpixel scales for multi-scale mode (default: [150, 300, 600])
         """
         self.img_folder = Path(img_folder)
         self.ann_file = Path(ann_file)
         self._transforms = transforms
         self.return_masks = return_masks
         self.superpixel_path = Path(superpixel_path) if superpixel_path else None
+        self.use_multiscale = use_multiscale
+        self.superpixel_scales = superpixel_scales or [150, 300, 600]
         self.prepare = ConvertCocoPolysToMask(return_masks)
         
         # Load COCO annotations
@@ -93,20 +97,36 @@ class DatasetsLoader(torch.utils.data.Dataset):
         # Load superpixel map
         if self.superpixel_path:
             rel_path = Path(img_info['file_name'])
-            # Try loading compressed .npz first (new format)
-            sp_path_npz = self.superpixel_path / rel_path.parent / (rel_path.stem + '.npz')
-            sp_path_npy = self.superpixel_path / rel_path.parent / (rel_path.stem + '.npy')
             
-            if sp_path_npz.exists():
-                import numpy as np
-                # Load compressed array
-                with np.load(sp_path_npz) as data:
-                    sp_map = data['sp_map']
-                target['slic_map'] = torch.from_numpy(sp_map.astype(np.int64)).long()
-            elif sp_path_npy.exists():
-                import numpy as np
-                sp_map = np.load(sp_path_npy)
-                target['slic_map'] = torch.from_numpy(sp_map.astype(np.int64)).long()
+            if self.use_multiscale:
+                # Load multi-scale superpixel maps
+                for scale in self.superpixel_scales:
+                    sp_path_npz = self.superpixel_path / rel_path.parent / f"{rel_path.stem}_slic{scale}.npz"
+                    if sp_path_npz.exists():
+                        import numpy as np
+                        with np.load(sp_path_npz) as data:
+                            sp_map = data['sp_map']
+                        target[f'slic_{scale}'] = torch.from_numpy(sp_map.astype(np.int64)).long()
+                
+                # Also set primary slic_map (middle scale, typically 300)
+                primary_scale = self.superpixel_scales[len(self.superpixel_scales) // 2]
+                if f'slic_{primary_scale}' in target:
+                    target['slic_map'] = target[f'slic_{primary_scale}']
+            else:
+                # Single-scale: try loading compressed .npz first (new format)
+                sp_path_npz = self.superpixel_path / rel_path.parent / (rel_path.stem + '.npz')
+                sp_path_npy = self.superpixel_path / rel_path.parent / (rel_path.stem + '.npy')
+                
+                if sp_path_npz.exists():
+                    import numpy as np
+                    # Load compressed array
+                    with np.load(sp_path_npz) as data:
+                        sp_map = data['sp_map']
+                    target['slic_map'] = torch.from_numpy(sp_map.astype(np.int64)).long()
+                elif sp_path_npy.exists():
+                    import numpy as np
+                    sp_map = np.load(sp_path_npy)
+                    target['slic_map'] = torch.from_numpy(sp_map.astype(np.int64)).long()
         
         # Apply transforms
         if self._transforms is not None:
@@ -198,6 +218,8 @@ def build_dataset(image_set, args, filter_category=None):
         args: Arguments with dataset configuration
             - data_path: Root path to dataset (e.g., 'datasets' or 'datasets_sample')
             - use_sample: Whether to use sample dataset
+            - use_multiscale: Whether to load multi-scale superpixels
+            - superpixel_scales: List of scales for multi-scale mode
         filter_category: Optional category to filter (CV, UAV, RS)
     
     Returns:
@@ -220,6 +242,10 @@ def build_dataset(image_set, args, filter_category=None):
     assert img_folder.exists(), f"Images folder not found: {img_folder}"
     assert ann_file.exists(), f"Annotation file not found: {ann_file}"
     
+    # Multi-scale settings
+    use_multiscale = getattr(args, 'use_multiscale', False)
+    superpixel_scales = getattr(args, 'superpixel_scales', [150, 300, 600])
+    
     # Create dataset
     dataset = DatasetsLoader(
         img_folder=img_folder,
@@ -227,7 +253,9 @@ def build_dataset(image_set, args, filter_category=None):
         transforms=make_data_transforms(image_set, args),
         return_masks=False,
         filter_category=filter_category,
-        superpixel_path=superpixel_path if superpixel_path.exists() else None
+        superpixel_path=superpixel_path if superpixel_path.exists() else None,
+        use_multiscale=use_multiscale,
+        superpixel_scales=superpixel_scales
     )
     
     return dataset

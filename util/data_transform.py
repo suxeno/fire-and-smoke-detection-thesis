@@ -74,6 +74,14 @@ def resize(image, target, size, max_size=None):
         slic_map = target["slic_map"].unsqueeze(0).unsqueeze(0).float()
         slic_map = interpolate(slic_map, size, mode="nearest")
         target["slic_map"] = slic_map.squeeze().long()
+    
+    # Also resize multi-scale superpixel maps if present
+    for key in list(target.keys()):
+        if key.startswith("slic_") and key != "slic_map":
+            # e.g., slic_150, slic_300, slic_600
+            slic_map = target[key].unsqueeze(0).unsqueeze(0).float()
+            slic_map = interpolate(slic_map, size, mode="nearest")
+            target[key] = slic_map.squeeze().long()
 
     return rescaled_image, target
 

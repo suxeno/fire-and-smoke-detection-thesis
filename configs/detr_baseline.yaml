@@ -1,9 +1,7 @@
 # DETR Baseline Configuration for Fire and Smoke Detection
-# Per-subset training: Use --subset CV/UAV/RS to train on specific subset
 
 # Model Architecture
-model_name: 'detr_baseline'
-use_slic: false  # Disable SLIC (use standard DETR)
+model_name: 'detr'  # Standard DETR (CNN backbone, no superpixels)
 
 # Backbone
 backbone: 'resnet50'  # Options: resnet18, resnet34, resnet50, resnet101
@@ -11,19 +9,20 @@ dilation: false  # Use dilated convolutions in last stage
 position_embedding: 'sine'  # Options: sine, learned
 masks: false  # No segmentation masks for detection
 
-# Transformer (vanilla DETR settings)
-hidden_dim: 256  # Model dimension (vanilla DETR default)
+# Transformer
+hidden_dim: 256  # Model dimension 
 dropout: 0.1
 nheads: 8  # Number of attention heads
-dim_feedforward: 2048  # FFN dimension (vanilla DETR default)
+dim_feedforward: 2048  # FFN dimension 
 enc_layers: 6  # Number of encoder layers
 dec_layers: 6  # Number of decoder layers
 pre_norm: false  # Pre-normalization in transformer
-num_queries: 100  # Number of object queries (vanilla DETR default)
+num_queries: 100  # Number of object queries 
 
 # Dataset
 dataset_file: 'fire_smoke'  # Custom dataset
 num_classes: 2  # fire, smoke
+subset: 'CV'  # Options: CV, UAV, RS, or '' (empty for all data)
 
 # Data Paths - Easy switching between sample and full dataset
 use_sample: true  # Set to false for full dataset
@@ -36,16 +35,16 @@ max_size: 1333  # Maximum image dimension
 # Training
 # Optimizer
 lr: 1.0e-4  # Learning rate
-lr_backbone: 1.0e-5  # Backbone learning rate (lower for pretrained)
+lr_backbone: 1.0e-5  # Backbone learning rate
 weight_decay: 1.0e-4
 clip_max_norm: 0.1  # Gradient clipping
 
 # Learning rate schedule
-lr_drop: 80  # Epoch to drop learning rate 
-epochs: 100  # Training epochs (matching paper)
+lr_drop: 120  # Epoch to drop learning rate 
+epochs: 150  # Training epochs 
 
 # Batch and workers
-batch_size: 8  # Batch size (matching paper that achieved 70%+ mAP)
+batch_size: 4  # Batch size
 num_workers: 4  # Data loading workers
 
 # Loss weights

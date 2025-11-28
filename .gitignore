@@ -74,7 +74,6 @@ datasets_sample/
 outputs/*/test_results.json
 outputs/*/test_results/
 outputs/logs/*.log
-outputs/plots/*.png
 outputs/plots/*.pdf
 
 # Temporary files

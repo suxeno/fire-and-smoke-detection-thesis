@@ -8,7 +8,6 @@ from torch import nn
 
 from util.misc import NestedTensor
 
-
 class PositionEmbeddingSine(nn.Module):
     """
     This is a more standard version of the position embedding, very similar to the one
@@ -73,6 +72,49 @@ class PositionEmbeddingLearned(nn.Module):
             x_emb.unsqueeze(0).repeat(h, 1, 1),
             y_emb.unsqueeze(1).repeat(1, w, 1),
         ], dim=-1).permute(2, 0, 1).unsqueeze(0).repeat(x.shape[0], 1, 1, 1)
+        return pos
+
+
+class PositionEmbeddingCoordinate(nn.Module):
+    """
+    Sinusoidal positional encoding for arbitrary 2D coordinates.
+    Unlike PositionEmbeddingSine which works on regular grids (feature maps),
+    this works on irregular point coordinates like superpixel centroids.
+    
+    Uses the same proven sinusoidal approach as DETR but for (y, x) coordinate pairs.
+    """
+    def __init__(self, num_pos_feats=128, temperature=10000, scale=2 * math.pi):
+        super().__init__()
+        self.num_pos_feats = num_pos_feats
+        self.temperature = temperature
+        self.scale = scale
+        
+    def forward(self, coords):
+        """
+        Args:
+            coords: (B, K, 2) with normalized (y, x) coordinates in [0, 1]
+        Returns:
+            pos: (B, K, num_pos_feats * 2) positional embeddings
+        """
+        # coords[:, :, 0] = y, coords[:, :, 1] = x
+        # Scale to [0, 2*pi]
+        y_embed = coords[:, :, 0:1] * self.scale  # (B, K, 1)
+        x_embed = coords[:, :, 1:2] * self.scale  # (B, K, 1)
+        
+        dim_t = torch.arange(self.num_pos_feats, dtype=torch.float32, device=coords.device)
+        dim_t = self.temperature ** (2 * (dim_t // 2) / self.num_pos_feats)
+        
+        # (B, K, num_pos_feats)
+        pos_x = x_embed / dim_t
+        pos_y = y_embed / dim_t
+        
+        # Apply sin/cos
+        pos_x = torch.stack((pos_x[:, :, 0::2].sin(), pos_x[:, :, 1::2].cos()), dim=3).flatten(2)
+        pos_y = torch.stack((pos_y[:, :, 0::2].sin(), pos_y[:, :, 1::2].cos()), dim=3).flatten(2)
+        
+        # Concatenate y and x embeddings
+        pos = torch.cat((pos_y, pos_x), dim=2)  # (B, K, num_pos_feats * 2)
+        
         return pos
 
 

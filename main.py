@@ -1,9 +1,6 @@
 """
 Main training script for DETR-SLIC Fire and Smoke Detection.
 Uses YAML config files instead of argparse for easier configuration management.
-
-Per-subset training: Train and evaluate on a single subset (CV, UAV, or RS).
-Example: python main.py --config configs/detr_baseline.yaml --subset CV
 """
 import argparse
 import datetime
@@ -41,11 +38,14 @@ def main(config_path, subset=None):
     # Priority: CLI argument > config file > None (all data)
     filter_category = subset or getattr(args, 'subset', None)
     
+    # Store original model_name for model building (routing uses this)
+    args.model_type = args.model_name  # e.g., 'detr_slic'
+    
     # Update output directory to include subset if specified
     if filter_category:
         base_output = getattr(args, 'output_dir', 'outputs/default')
         args.output_dir = f"{base_output}/{filter_category.lower()}"
-        args.model_name = f"{args.model_name}_{filter_category.lower()}"
+        args.model_name = f"{args.model_name}_{filter_category.lower()}"  # For display only
     
     # Initialize distributed training if needed
     if getattr(args, 'distributed', False):
@@ -55,7 +55,6 @@ def main(config_path, subset=None):
     print(f"Configuration for {args.model_name}")
     print("="*80)
     print(f"Model: {args.model_name}")
-    print(f"Use SLIC: {args.use_slic}")
     print(f"Dataset: {args.data_path}")
     print(f"Subset: {filter_category if filter_category else 'ALL'}")
     print(f"Num classes: {args.num_classes}")
@@ -86,18 +85,27 @@ def main(config_path, subset=None):
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
         model_without_ddp = model.module
     
-    # Build optimizer with different learning rates for backbone
-    param_dicts = [
-        {
-            "params": [p for n, p in model_without_ddp.named_parameters() 
-                      if "backbone" not in n and p.requires_grad]
-        },
-        {
-            "params": [p for n, p in model_without_ddp.named_parameters() 
-                      if "backbone" in n and p.requires_grad],
-            "lr": args.lr_backbone,
-        },
-    ]
+    # Build optimizer with different learning rates for backbone (if applicable)
+    # DETR-SLIC has no backbone, so use single learning rate
+    if hasattr(args, 'lr_backbone') and args.lr_backbone is not None:
+        # Models with backbone: separate LR for backbone
+        param_dicts = [
+            {
+                "params": [p for n, p in model_without_ddp.named_parameters() 
+                          if "backbone" not in n and p.requires_grad]
+            },
+            {
+                "params": [p for n, p in model_without_ddp.named_parameters() 
+                          if "backbone" in n and p.requires_grad],
+                "lr": args.lr_backbone,
+            },
+        ]
+    else:
+        # Models without backbone (DETR-SLIC): single learning rate
+        param_dicts = [
+            {"params": [p for p in model_without_ddp.parameters() if p.requires_grad]}
+        ]
+    
     optimizer = torch.optim.AdamW(param_dicts, lr=args.lr, weight_decay=args.weight_decay)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_drop)
     

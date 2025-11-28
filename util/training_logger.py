@@ -115,11 +115,11 @@ class TrainingLogger:
         # Save to metrics summary
         with open(self.metrics_file, 'a') as f:
             f.write(f"Epoch {epoch}:\n")
-            f.write(f"  Train - Loss: {train_stats.get('loss', 0):.4f}\n")
+            f.write(f"  Train - Loss: {train_stats.get('loss', 0):.4f} | Class Error: {train_stats.get('class_error', 0):.2f}%\n")
             
             if val_stats:
                 # Overall average
-                f.write(f"  Val (Avg) - Loss: {val_stats.get('loss', 0):.4f}")
+                f.write(f"  Val (Avg) - Loss: {val_stats.get('loss', 0):.4f} | Class Error: {val_stats.get('class_error', 0):.2f}%")
                 if 'AP' in val_stats:
                     f.write(f" | mAP: {val_stats.get('AP', 0):.4f} | Recall: {val_stats.get('Recall', 0):.4f}")
                 
@@ -159,7 +159,7 @@ class TrainingLogger:
         
         if test_stats:
             print(f"\n{'TEST SET RESULTS:':<20}")
-            print(f"{'':20} Loss: {test_stats.get('loss', 0):.4f}")
+            print(f"{'':20} Loss: {test_stats.get('loss', 0):.4f} | Class Error: {test_stats.get('class_error', 0):.2f}%")
             if 'AP' in test_stats:
                 print(f"{'':20} mAP: {test_stats.get('AP', 0):.4f} | " +
                       f"mAP50: {test_stats.get('mAP50', 0):.4f} | " +
@@ -177,7 +177,7 @@ class TrainingLogger:
             f.write(f"Best Val mAP: {self.best_metrics['val_AP']:.4f}\n")
             if test_stats:
                 f.write(f"\nTest Results:\n")
-                f.write(f"  Loss: {test_stats.get('loss', 0):.4f}\n")
+                f.write(f"  Loss: {test_stats.get('loss', 0):.4f} | Class Error: {test_stats.get('class_error', 0):.2f}%\n")
                 if 'AP' in test_stats:
                     f.write(f"  mAP: {test_stats.get('AP', 0):.4f} | mAP50: {test_stats.get('mAP50', 0):.4f} | Recall: {test_stats.get('Recall', 0):.4f}\n")
                     

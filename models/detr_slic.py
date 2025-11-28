@@ -1,231 +1,224 @@
+"""
+DETR-SLIC: Superpixel-based Object Detection WITHOUT CNN Backbone
+
+This module implements a lightweight detection model that uses superpixel
+tokenization instead of CNN features. Ideal for fire/smoke detection where
+color and texture are highly discriminative.
+
+Pipeline:
+1. SLIC superpixel segmentation (pre-computed offline)
+2. Extract 19D features per superpixel (color, gradient, shape, position)
+3. Project to hidden_dim using learnable MLP
+4. Transformer encoder for superpixel interaction  
+5. Transformer decoder with object queries
+6. Detection heads (class + bbox)
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
 from typing import Optional
 
 from util.misc import NestedTensor, nested_tensor_from_tensor_list
-from .backbone import build_backbone
-from .transformer import build_transformer, TransformerDecoder
+from .transformer import TransformerDecoder, TransformerDecoderLayer
+from .position_encoding import PositionEmbeddingCoordinate
 from .superpixel.pool import SuperpixelPool
-from .superpixel.sca import SCA
 from .superpixel.superpixel_encoder import SuperpixelTransformerEncoder
 from .detr import MLP, SetCriterion, PostProcess
 from .matcher import build_matcher
 
 
-class SinusoidalPositionEmbedding2D(nn.Module):
-    """
-    Sinusoidal positional encoding for 2D coordinates (like superpixel centroids).
-    Same approach as DETR's PositionEmbeddingSine but for arbitrary (y, x) coordinates.
-    """
-    def __init__(self, num_pos_feats=128, temperature=10000, scale=2 * math.pi):
-        super().__init__()
-        self.num_pos_feats = num_pos_feats
-        self.temperature = temperature
-        self.scale = scale
-        
-    def forward(self, centroids):
-        """
-        Args:
-            centroids: (B, K, 2) with normalized (y, x) coordinates in [0, 1]
-        Returns:
-            pos: (B, K, num_pos_feats * 2) positional embeddings
-        """
-        # centroids[:, :, 0] = y, centroids[:, :, 1] = x
-        # Scale to [0, 2*pi]
-        y_embed = centroids[:, :, 0:1] * self.scale  # (B, K, 1)
-        x_embed = centroids[:, :, 1:2] * self.scale  # (B, K, 1)
-        
-        dim_t = torch.arange(self.num_pos_feats, dtype=torch.float32, device=centroids.device)
-        dim_t = self.temperature ** (2 * (dim_t // 2) / self.num_pos_feats)
-        
-        # (B, K, num_pos_feats)
-        pos_x = x_embed / dim_t
-        pos_y = y_embed / dim_t
-        
-        # Apply sin/cos
-        pos_x = torch.stack((pos_x[:, :, 0::2].sin(), pos_x[:, :, 1::2].cos()), dim=3).flatten(2)
-        pos_y = torch.stack((pos_y[:, :, 0::2].sin(), pos_y[:, :, 1::2].cos()), dim=3).flatten(2)
-        
-        # Concatenate y and x embeddings
-        pos = torch.cat((pos_y, pos_x), dim=2)  # (B, K, num_pos_feats * 2)
-        
-        return pos
-
-
 class DETRSlic(nn.Module):
     """
-    DETR with SLIC Superpixel-based encoder for efficient object detection.
+    DETR with SLIC Superpixel tokenization - NO CNN BACKBONE.
+    
+    Extracts features directly from image pixels using superpixel pooling,
+    then processes with transformer encoder-decoder for detection.
+    
+    Args:
+        num_classes: Number of object classes (excluding background)
+        num_queries: Number of object queries
+        hidden_dim: Transformer model dimension
+        n_superpixels: Maximum number of superpixels per image
+        nheads: Number of attention heads
+        num_encoder_layers: Number of encoder layers
+        num_decoder_layers: Number of decoder layers
+        dim_feedforward: FFN dimension
+        dropout: Dropout rate
+        aux_loss: Use auxiliary decoding losses
     """
+    
     def __init__(self,
-                 backbone,
-                 transformer,
                  num_classes: int,
-                 num_queries: int,
-                 n_superpixels: int = 100,
-                 slic_compactness: float = 10.0,
-                 pooling_method: str = 'mean',
-                 use_superpixel_encoder: bool = True,
+                 num_queries: int = 100,
+                 hidden_dim: int = 256,
+                 n_superpixels: int = 300,
+                 nheads: int = 8,
+                 num_encoder_layers: int = 6,
+                 num_decoder_layers: int = 6,
+                 dim_feedforward: int = 2048,
+                 dropout: float = 0.1,
                  aux_loss: bool = False,
-                 use_sca: bool = False,
-                 use_fourier_shape: bool = True,
-                 n_fourier_coeffs: int = 16):
+                 use_multiscale: bool = False,
+                 superpixel_scales: list = None):
         super().__init__()
+        
         self.num_queries = num_queries
-        self.backbone = backbone
         self.aux_loss = aux_loss
-        self.use_superpixel_encoder = use_superpixel_encoder
-        self.use_sca = use_sca
+        self.hidden_dim = hidden_dim
+        self.use_multiscale = use_multiscale
+        self.superpixel_scales = superpixel_scales or [150, 300, 600]
         
-        hidden_dim = transformer.d_model
-        
-        # Feature pooling module
+        # Superpixel feature extraction (69D -> hidden_dim, or 207D for multi-scale)
+        # No CNN backbone - extracts features directly from image pixels
         self.superpixel_pool = SuperpixelPool(
-            in_dim=hidden_dim,
-            out_dim=hidden_dim,
+            hidden_dim=hidden_dim,
             max_superpixels=n_superpixels,
-            pooling_type=pooling_method,
-            use_fourier_shape=use_fourier_shape,
-            n_fourier_coeffs=n_fourier_coeffs
+            use_cnn_features=False,
+            use_multiscale=use_multiscale,
+            superpixel_scales=superpixel_scales
         )
-        if use_sca:
-            self.sca = SCA(dim=hidden_dim)
         
-        # Sinusoidal Positional Encoding for superpixel centroids
-        # Uses the same proven approach as DETR's position encoding
-        self.pos_embed = SinusoidalPositionEmbedding2D(num_pos_feats=hidden_dim // 2)
+        # Positional encoding for superpixel centroids
+        self.pos_embed = PositionEmbeddingCoordinate(num_pos_feats=hidden_dim // 2)
         
-        # Projection layer for backbone features
-        self.input_proj = nn.Conv2d(backbone.num_channels, hidden_dim, kernel_size=1)
+        # Transformer encoder for superpixel tokens
+        self.superpixel_encoder = SuperpixelTransformerEncoder(
+            d_model=hidden_dim,
+            nhead=nheads,
+            num_encoder_layers=num_encoder_layers,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            normalize_before=False
+        )
         
-        if use_superpixel_encoder:
-            # Use superpixel-based encoder
-            self.superpixel_encoder = SuperpixelTransformerEncoder(
-                d_model=hidden_dim,
-                nhead=transformer.nhead,
-                num_encoder_layers=transformer.encoder.num_layers,
-                dim_feedforward=2048,
-                dropout=0.1,
-                normalize_before=False
-            )
-            # Keep original decoder
-            self.decoder = transformer.decoder
-        else:
-            # Use full transformer
-            self.transformer = transformer
+        # Transformer decoder
+        decoder_layer = TransformerDecoderLayer(
+            d_model=hidden_dim,
+            nhead=nheads,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            activation="relu",
+            normalize_before=False
+        )
+        decoder_norm = nn.LayerNorm(hidden_dim)
+        self.decoder = TransformerDecoder(
+            decoder_layer, 
+            num_decoder_layers, 
+            decoder_norm,
+            return_intermediate=True
+        )
         
         # Detection heads
         self.class_embed = nn.Linear(hidden_dim, num_classes + 1)
         self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
         self.query_embed = nn.Embedding(num_queries, hidden_dim)
+    
+    def _resize_slic_map(self, sp_map: torch.Tensor, target_h: int, target_w: int) -> torch.Tensor:
+        """
+        Resize superpixel map to match target image size using nearest-neighbor.
         
-        # Use default PyTorch initialization (same as official DETR)
-        # No custom bias initialization - let the model learn from scratch
+        Args:
+            sp_map: (H_orig, W_orig) superpixel map (long tensor)
+            target_h: Target height
+            target_w: Target width
+            
+        Returns:
+            Resized superpixel map (target_h, target_w)
+        """
+        h, w = sp_map.shape
+        if h == target_h and w == target_w:
+            return sp_map
+        
+        # Use nearest-neighbor interpolation to preserve superpixel IDs
+        sp_map_float = sp_map.float().unsqueeze(0).unsqueeze(0)  # (1, 1, H, W)
+        resized = F.interpolate(sp_map_float, size=(target_h, target_w), mode='nearest')
+        return resized.squeeze(0).squeeze(0).long()
         
     def forward(self, samples: NestedTensor, targets: Optional[list] = None):
         """
         Args:
             samples: NestedTensor with images and masks
-            targets: Optional list of targets (containing 'slic_map' if pre-computed)
+            targets: List of targets with 'slic_map' key (pre-computed superpixels)
         Returns:
-            Dictionary with predictions
+            Dictionary with 'pred_logits' and 'pred_boxes'
         """
         if isinstance(samples, (list, torch.Tensor)):
             samples = nested_tensor_from_tensor_list(samples)
         
-        # Extract features from backbone
-        features, pos = self.backbone(samples)
-        src, mask = features[-1].decompose()
+        images = samples.tensors  # (B, 3, H, W)
+        B, _, H, W = images.shape
         
-        # Project features
-        src_proj = self.input_proj(src)  # (B, hidden_dim, H, W)
-        
-        B, C, H_feat, W_feat = src_proj.shape
-        
-        # Determine superpixel maps
-        if targets is not None and 'slic_map' in targets[0]:
-            # Use pre-computed superpixels from targets
-            slic_maps_list = [t['slic_map'] for t in targets]
-            
-            # Pad maps to match batch dimensions
-            # We use a custom padding value of -1 to indicate padding
-            max_h, max_w = samples.tensors.shape[-2:]
-            slic_maps_padded = torch.full((B, max_h, max_w), -1, dtype=torch.long, device=samples.tensors.device)
-            
-            num_superpixels_list = []
-            for i, sp_map in enumerate(slic_maps_list):
-                h, w = sp_map.shape
-                slic_maps_padded[i, :h, :w] = sp_map
-                num_superpixels_list.append(sp_map.max() + 1)
-            
-            superpixel_maps = slic_maps_padded
-            num_superpixels = torch.tensor(num_superpixels_list, device=samples.tensors.device)
-            
-            # Resize superpixel maps to feature map size using nearest neighbor
-            superpixel_maps = superpixel_maps.float().unsqueeze(1)  # (B, 1, H, W)
-            superpixel_maps = F.interpolate(superpixel_maps, size=(H_feat, W_feat), mode='nearest')
-            superpixel_maps = superpixel_maps.squeeze(1).long()  # (B, H_feat, W_feat)
-            
-        else:
-            # Pre-computed superpixels are required
+        # Get pre-computed superpixel maps
+        if targets is None or 'slic_map' not in targets[0]:
             raise RuntimeError(
-                "Pre-computed superpixel maps ('slic_map') not found in targets. "
-                "Please run 'util/generate_superpixel.py' to generate them offline before training. "
-                "On-the-fly generation is disabled to ensure quality."
+                "Pre-computed superpixel maps required in targets['slic_map']. "
+                "Run 'util/generate_superpixel.py' to generate them before training."
             )
         
-        # Pool features within superpixels
-        # Pass original images for color stats calculation
-        superpixel_features, superpixel_mask, centroids = self.superpixel_pool(
-            src_proj, superpixel_maps, images=samples.tensors
+        # Pad superpixel maps to match image size (handles variable sizes)
+        # Note: superpixel maps may need resizing if image was resized by augmentation
+        slic_maps = torch.full((B, H, W), -1, dtype=torch.long, device=images.device)
+        for i, t in enumerate(targets):
+            sp_map = t['slic_map'].to(images.device)
+            # Resize if dimensions don't match (due to data augmentation)
+            sp_map = self._resize_slic_map(sp_map, H, W)
+            slic_maps[i] = sp_map
+        
+        # Prepare multi-scale maps if using multi-scale mode
+        multiscale_maps = None
+        if self.use_multiscale:
+            multiscale_maps = {}
+            for scale in self.superpixel_scales:
+                key = f'slic_{scale}'
+                if key in targets[0]:
+                    scale_maps = torch.full((B, H, W), -1, dtype=torch.long, device=images.device)
+                    for i, t in enumerate(targets):
+                        sp_map = t[key].to(images.device)
+                        # Resize if dimensions don't match
+                        sp_map = self._resize_slic_map(sp_map, H, W)
+                        scale_maps[i] = sp_map
+                    multiscale_maps[key] = scale_maps
+        
+        # Extract 69D features from superpixels (no CNN!)
+        superpixel_features, mask, centroids = self.superpixel_pool(
+            images, slic_maps, multiscale_maps=multiscale_maps
         )
+        # superpixel_features: (B, K, hidden_dim)
+        # mask: (B, K) - True for valid superpixels
+        # centroids: (B, K, 2) - normalized coordinates
         
-        # Sinusoidal positional encoding from centroids
-        # (B, K, 2) -> (B, K, hidden_dim)
-        superpixel_pos = self.pos_embed(centroids)
+        # Positional encoding from centroids
+        superpixel_pos = self.pos_embed(centroids)  # (B, K, hidden_dim)
         
-        if self.use_sca:
-            # Apply SCA
-            # pixel_feats needs to be (B, H*W, C)
-            pixel_feats_flat = src_proj.flatten(2).transpose(1, 2)
-            # mask for SCA: True indicates padding. superpixel_mask: True indicates valid.
-            # So we pass ~superpixel_mask
-            superpixel_features, _ = self.sca(pixel_feats_flat, superpixel_features, mask=~superpixel_mask)
-        
-        # Prepare for transformer: (N_superpixels, B, C)
+        # Prepare for transformer: (K, B, hidden_dim)
         superpixel_features = superpixel_features.permute(1, 0, 2)
-        # Use sinusoidal positional encoding
         superpixel_pos = superpixel_pos.permute(1, 0, 2)
         
-        # Invert mask for transformer (True = padding, False = valid)
-        superpixel_padding_mask = ~superpixel_mask  # (B, max_segments)
+        # Padding mask (True = padding)
+        superpixel_padding_mask = ~mask
         
-        if self.use_superpixel_encoder:
-            # Use superpixel encoder
-            memory = self.superpixel_encoder(
-                superpixel_features,
-                src_key_padding_mask=superpixel_padding_mask,
-                pos=superpixel_pos
-            )  # (N_superpixels, B, hidden_dim)
-            
-            # Decoder
-            query_embed = self.query_embed.weight.unsqueeze(1).repeat(1, B, 1)  # (num_queries, B, hidden_dim)
-            tgt = torch.zeros_like(query_embed)
-            
-            hs = self.decoder(
-                tgt, memory,
-                memory_key_padding_mask=superpixel_padding_mask,
-                pos=superpixel_pos,
-                query_pos=query_embed
-            )  # (num_decoder_layers, num_queries, B, hidden_dim)
-            
-            hs = hs.transpose(1, 2)  # (num_decoder_layers, B, num_queries, hidden_dim)
-        else:
-            # Use original transformer (fallback)
-            hs = self.transformer(src_proj, mask, self.query_embed.weight, pos[-1])[0]
+        # Encoder
+        memory = self.superpixel_encoder(
+            superpixel_features,
+            src_key_padding_mask=superpixel_padding_mask,
+            pos=superpixel_pos
+        )  # (K, B, hidden_dim)
         
-        # Prediction heads
+        # Decoder
+        query_embed = self.query_embed.weight.unsqueeze(1).repeat(1, B, 1)
+        tgt = torch.zeros_like(query_embed)
+        
+        hs = self.decoder(
+            tgt, memory,
+            memory_key_padding_mask=superpixel_padding_mask,
+            pos=superpixel_pos,
+            query_pos=query_embed
+        )  # (num_layers, num_queries, B, hidden_dim)
+        
+        hs = hs.transpose(1, 2)  # (num_layers, B, num_queries, hidden_dim)
+        
+        # Detection heads
         outputs_class = self.class_embed(hs)
         outputs_coord = self.bbox_embed(hs).sigmoid()
         
@@ -247,35 +240,31 @@ class DETRSlic(nn.Module):
 
 def build_detr_slic(args):
     """
-    Build DETR-SLIC model with criterion and postprocessors.
+    Build DETR-SLIC model.
     """
-    # Use args.num_classes if provided, otherwise default logic
     if hasattr(args, 'num_classes'):
         num_classes = args.num_classes
     else:
-        num_classes = 20 if args.dataset_file != 'coco' else 91
+        num_classes = 2  # fire, smoke
         
     device = torch.device(args.device)
     
-    backbone = build_backbone(args)
-    transformer = build_transformer(args)
-    
     model = DETRSlic(
-        backbone=backbone,
-        transformer=transformer,
         num_classes=num_classes,
         num_queries=args.num_queries,
-        n_superpixels=getattr(args, 'n_superpixels', 100),
-        slic_compactness=getattr(args, 'slic_compactness', 10.0),
-        pooling_method=getattr(args, 'pooling_method', 'mean'),
-        use_superpixel_encoder=getattr(args, 'use_superpixel_encoder', True),
+        hidden_dim=getattr(args, 'hidden_dim', 256),
+        n_superpixels=getattr(args, 'n_superpixels', 300),
+        nheads=getattr(args, 'nheads', 8),
+        num_encoder_layers=getattr(args, 'enc_layers', 6),
+        num_decoder_layers=getattr(args, 'dec_layers', 6),
+        dim_feedforward=getattr(args, 'dim_feedforward', 2048),
+        dropout=getattr(args, 'dropout', 0.1),
         aux_loss=args.aux_loss,
-        use_sca=getattr(args, 'use_sca', False),
-        use_fourier_shape=getattr(args, 'use_fourier_shape', True),
-        n_fourier_coeffs=getattr(args, 'n_fourier_coeffs', 16)
+        use_multiscale=getattr(args, 'use_multiscale', False),
+        superpixel_scales=getattr(args, 'superpixel_scales', [150, 300, 600])
     )
     
-    # Criterion and postprocessors (reuse from DETR)
+    # Criterion and postprocessors
     matcher = build_matcher(args)
     weight_dict = {'loss_ce': 1, 'loss_bbox': args.bbox_loss_coef, 'loss_giou': args.giou_loss_coef}
     
@@ -287,16 +276,8 @@ def build_detr_slic(args):
     
     losses = ['labels', 'boxes', 'cardinality']
     
-    # Get focal loss parameters if available
-    use_focal_loss = getattr(args, 'use_focal_loss', False)
-    focal_alpha = getattr(args, 'focal_alpha', 0.25)
-    focal_gamma = getattr(args, 'focal_gamma', 2.0)
-    
     criterion = SetCriterion(num_classes, matcher=matcher, weight_dict=weight_dict,
-                             eos_coef=args.eos_coef, losses=losses,
-                             use_focal_loss=use_focal_loss,
-                             focal_alpha=focal_alpha,
-                             focal_gamma=focal_gamma)
+                             eos_coef=args.eos_coef, losses=losses)
     criterion.to(device)
     
     postprocessors = {'bbox': PostProcess()}
