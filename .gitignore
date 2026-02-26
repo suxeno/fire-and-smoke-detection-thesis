@@ -43,6 +43,7 @@ nosetests.xml
 coverage.xml
 *.cover
 *.log
+**/*.log
 .pytest_cache/
 
 # Virtual environments
@@ -60,21 +61,27 @@ outputs/*/runs/
 outputs/*/tensorboard/
 runs/
 tensorboard/
+**/runs/
+**/tensorboard/
+**/outputs/**
+!**/outputs/**/
+!**/outputs/**/*.json
+!**/outputs/**/*.png
+!**/outputs/**/*.jpg
+!**/outputs/**/*.jpeg
+!**/outputs/**/*.pdf
 
 # Weights & Biases
 wandb/
 *.wandb
 
 # Dataset Files (Large Files)
-datasets/
-datasets_sample/
+FASDD/*
+FASDD
 
 # Output Files
-# Training outputs (already covered by outputs/**/*.pth above)
-outputs/*/test_results.json
-outputs/*/test_results/
-outputs/logs/*.log
-outputs/plots/*.pdf
+# Training outputs (Large .pth files ignored in root and subdirectories)
+# Plots and JSON results are specifically ALLOWED in the section above.
 
 # Temporary files
 *.tmp
@@ -137,13 +144,10 @@ $RECYCLE.BIN/
 .directory
 .Trash-*
 
-# Project Specific
-# Sample dataset CSV (regeneratable)
-datasets_sample/sampled_files.csv
-
 # ROCm cache
-.cache/
 *.rocm_cache
+.agent/
+.gemini/
 
 # CUDA cache
 *.cuda_cache
@@ -176,17 +180,6 @@ results/
 !README.md
 !requirements.txt
 !LICENSE
-
-# Keep annotation files (small JSON files)
-!datasets/annotations/COCO/Annotations/*.json
-!datasets_sample/annotations/COCO/Annotations/*.json
-
-# Keep config files
-!configs/*.yaml
-!configs/*.yml
-
-# Keep version tracking
-!datasets/version.txt
 
 # Keep documentation
 !docs/
