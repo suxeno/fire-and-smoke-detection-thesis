@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# DETR-HYBRID train script
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+# CONFIGURATION
+DATA_PATH="/home/Media/Dataset/FASDD/FASDD_CV"
+OUTPUT_DIR="./outputs/1-initial"
+RESUME_URL="https://dl.fbaipublicfiles.com/detr/detr-r50-e632da11.pth"
+
+# Training parameters
+EPOCHS=36
+BATCH_SIZE=2
+NUM_WORKERS=2
+
+# Model architecture & Hybrid config
+ENC_LAYERS=6
+DEC_LAYERS=6
+SLIC_N_SEGMENTS=200
+POOLING_TYPE="mean"
+
+# Learning rates
+LR=1e-5
+LR_BACKBONE=1e-6
+
+# START TRAINING
+echo "DETR-HYBRID Training"
+echo "======================================"
+echo "Dataset: $DATA_PATH"  
+echo "Output:  $OUTPUT_DIR"
+echo "Epochs:  $EPOCHS"
+echo "Batch:   $BATCH_SIZE"
+echo "LR:      $LR (backbone: $LR_BACKBONE)"
+echo "Resume:  $RESUME_URL"
+echo "SLIC Segments: $SLIC_N_SEGMENTS"
+echo "Pooling: $POOLING_TYPE"
+echo ""
+
+nohup python3 main.py \
+    --coco_path "$DATA_PATH" \
+    --output_dir "$OUTPUT_DIR" \
+    --epochs $EPOCHS \
+    --batch_size $BATCH_SIZE \
+    --num_workers $NUM_WORKERS \
+    --enc_layers $ENC_LAYERS \
+    --dec_layers $DEC_LAYERS \
+    --lr $LR \
+    --lr_backbone $LR_BACKBONE \
+    --slic_n_segments $SLIC_N_SEGMENTS \
+    --pooling_type "$POOLING_TYPE" \
+    --resume "$RESUME_URL" \
+    --no_aux_loss \
+    > train.log 2>&1 &     
+
+echo "Training started with PID: $!"
+echo "Logs: train.log"
+echo "JSON Log: $OUTPUT_DIR/training_log.json"
