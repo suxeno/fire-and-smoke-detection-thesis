@@ -540,7 +540,7 @@ class SLICTransformer(nn.Module):
 
     def forward(
         self,
-        backbone_output: dict,     # from SLICFeatureExtractor
+        backbone_output: dict,     # from GraphFeatureExtractor
         input_query_bbox=None,     # [bs, num_dn, 4] or None
         input_query_label=None,    # [bs, num_dn, d_model] or None
         attn_mask=None,            # [nq+num_dn, nq+num_dn] or None

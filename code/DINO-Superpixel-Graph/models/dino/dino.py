@@ -32,7 +32,7 @@ from .segmentation import (DETRsegm, PostProcessPanoptic, PostProcessSegm,
                            dice_loss)
 from .deformable_transformer import build_deformable_transformer
 from .slic_transformer import SLICTransformer
-from .slic_backbone import SLICFeatureExtractor
+from .graph_backbone import GraphFeatureExtractor
 from .utils import sigmoid_focal_loss, MLP
 
 from ..registry import MODULE_BUILD_FUNCS
@@ -83,7 +83,7 @@ class DINO(nn.Module):
         self.label_enc = nn.Embedding(dn_labelbook_size + 1, hidden_dim)
 
         # Detect SLIC backbone (token-based, no spatial grids)
-        self.is_slic = isinstance(backbone, SLICFeatureExtractor)
+        self.is_graph = isinstance(backbone, GraphFeatureExtractor)
 
         # setting query dim
         self.query_dim = query_dim
@@ -100,7 +100,7 @@ class DINO(nn.Module):
 
         # prepare input projection layers
         # SLIC backbone already outputs 256-dim tokens — no Conv2d needed
-        if self.is_slic:
+        if self.is_graph:
             self.input_proj = nn.ModuleList()  # empty — no projection needed
         elif num_feature_levels > 1:
             num_backbone_outs = len(backbone.num_channels)
@@ -254,7 +254,7 @@ class DINO(nn.Module):
             assert targets is None
             input_query_bbox = input_query_label = attn_mask = dn_meta = None
 
-        if self.is_slic:
+        if self.is_graph:
             # SLIC path: backbone outputs token dict, pass directly to SLICTransformer
             backbone_output = self.backbone(samples, targets=targets)
             hs, reference, hs_enc, ref_enc, init_box_proposal = self.transformer(
@@ -732,7 +732,7 @@ def build_dino(args):
 
     backbone = build_backbone(args)
 
-    if args.backbone == 'slic':
+    if args.backbone == 'graph':
         transformer = SLICTransformer(
             d_model=args.hidden_dim,
             nhead=args.nheads,

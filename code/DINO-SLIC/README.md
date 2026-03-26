@@ -1,128 +1,115 @@
 # DINO-SLIC <img src="figs/dinosaur.png" width="30">
 
-**DINO-SLIC** is an experimental object detection model that replaces the traditional CNN backbone in [DINO](https://arxiv.org/abs/2203.03605) with a **handcrafted superpixel feature extractor** based on SLIC (Simple Linear Iterative Clustering). Instead of learning features through millions of convolution parameters, DINO-SLIC computes interpretable geometric, color, and texture descriptors from superpixels and feeds them as tokens directly into a standard transformer.
+**DINO-SLIC** is an experimental object detection model that replaces the traditional CNN backbone in [DINO](https://arxiv.org/abs/2203.03605) with a **GPU-accelerated handcrafted superpixel feature extractor** based on SLIC (Simple Linear Iterative Clustering). Instead of learning features through millions of convolution parameters, DINO-SLIC computes interpretable geometric, color, and texture descriptors from superpixels entirely on the GPU and feeds them as tokens directly into a standard transformer.
 
-> **Key Idea:** Superpixels *are* the tokens. No grids, no convolutions — just handcrafted features + a lightweight transformer.
+> **Key Idea:** Superpixels *are* the tokens. No grids, no convolutions, no CUDA deformable attention — just handcrafted GPU features (`scatter_add`) + standard MHSA transformer.
 
 ---
 
 ## 📐 Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                          DINO-SLIC Pipeline                        │
-│                                                                     │
-│  Image ───► SLIC Segmentation ───► Feature Extraction ───► Tokens  │
-│  (RGB)      (3 scales)              (113-dim per SP)       (256-d) │
-│                                                                     │
-│  Tokens + Centroids ───► MHSA Encoder ───► Cross-Attn Decoder     │
-│                          (standard)        (with DN queries)       │
-│                                                                     │
-│  Decoder ───► Class Predictions + Bounding Boxes                   │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    A[Image RGB GPU] --> B[Pre-computed SLIC Maps]
+    B -->|3 scales e.g. 400, 200, 100| C
+    A --> C
+    C[GPU Feature Extraction<br/>scatter_add] -->|136-dim per SP| D[Linear Projection]
+    D -->|256-dim| E[Token Sequences + Centroids]
+    E -->|Tokens + Paddings| F[Standard MHSA Encoder]
+    F -->|Encoder Memory| G[Two-stage Box Proposals<br/>from Centroids]
+    F --> H[Standard Cross-Attn Decoder]
+    G -->|Top-K Queries| H
+    H -->|Iterative Box Refinement| I[Class & Bbox Predictions]
 ```
 
 ### How It Works (Step by Step)
 
-| Step | What Happens | Code |
+| Step | What Happens | Source |
 |------|-------------|------|
-| **1. SLIC Segmentation** | Image is segmented into superpixels at 3 scales (`n_segments=[400, 200, 100]`), mimicking multi-scale CNN feature maps (C3/C4/C5). | `slic_backbone.py` |
-| **2. Feature Extraction** | For each superpixel, a **113-dim feature vector** is computed covering color, shape, texture, spatial, and relational properties. | `slic_backbone.py` |
-| **3. Projection** | A linear layer projects 113-dim → 256-dim to match the transformer's hidden dimension. | `slic_backbone.py` |
-| **4. Token Output** | The backbone outputs `tokens [bs, N, 256]`, `centroids [bs, N, 2]`, `padding_mask [bs, N]`, and `level_counts`. | `slic_backbone.py` |
-| **5. Positional Encoding** | Sinusoidal PE is computed from the normalized `(cx, cy)` centroid of each superpixel + per-level embeddings to distinguish scales. | `slic_transformer.py` |
-| **6. Encoder** | Standard multi-head self-attention (MHSA) encoder processes all superpixel tokens together. No deformable attention needed. | `slic_transformer.py` |
-| **7. Two-Stage Proposals** | Encoder output generates box proposals from centroids: each superpixel center → `(cx, cy, w, h)` with scale-dependent default sizes. Top-k proposals become decoder queries. | `slic_transformer.py` |
-| **8. Decoder** | Cross-attention decoder: object queries attend to superpixel memory. Iterative box refinement updates reference points at each layer. | `slic_transformer.py` |
-| **9. Detection Head** | Final class logits + bounding box regression. Supports denoising (DN) training from DINO. | `dino.py` |
+| **1. SLIC Segmentation Maps** | Instead of running SLIC on CPU dynamically, **pre-computed SLIC `.npz` maps** are loaded from the dataset for 3 scales (e.g., `400, 200, 100`), mimicking CNN multiscale features. (CPU fallback exists). | Dataset / `slic_backbone.py` |
+| **2. GPU Feature Extraction** | For each superpixel map, a **136-dim feature vector** is extracted *entirely on the GPU* using `torch.scatter_add_`. This eliminates costly Python loops and CPU-GPU memory transfers. | `slic_backbone.py` |
+| **3. Linear Projection** | A simple `nn.Linear` layer projects the 136-dim handcrafted descriptors to 256-dim embedding tokens to match the transformer's hidden dimension. | `slic_backbone.py` |
+| **4. Token Output** | The backbone aggregates all tokens across scales and outputs `tokens [bs, N_total, 256]`, continuous `centroids [bs, N_total, 2]`, `padding_mask` (to mask missing superpixels up to `max_superpixels_per_level`), and `level_counts`. | `slic_backbone.py` |
+| **5. Positional Encoding** | Soft sinusoidal 2D positional encoding is generated from the normalized `(cx, cy)` topological centroids of the superpixels along with learned per-level embeddings representing the scales. | `slic_transformer.py` |
+| **6. MHSA Encoder** | A purely Standard `nn.MultiheadAttention` encoder handles self-attention between the 1D sequence of non-grid tokens. | `slic_transformer.py` |
+| **7. Two-Stage Proposals** | Encoder output serves to generate dense box proposals: every superpixel continuous centroid `(cx, cy)` gets a scale-dependent default `(w, h)` assigned. The top-K scoring proposals become query references for the Decoder. | `slic_transformer.py` |
+| **8. Standard Cross-Attn Decoder** | Standard `nn.MultiheadAttention` is used for **both** Self-Attention among object queries and Cross-Attention from queries to superpixel memory. Supports DINO's iterative box refinement updating references. The output sequences are correctly transposed to `batch-first` `[num_layers, bs, nq, d_model]` for matcher stability. | `slic_transformer.py` |
+| **9. Detection Head & CDN** | Final target projection to logits and bounding boxes. Smoothly integrates with DINO's original Contrastive DeNoising (CDN) training framework. | `dino.py` |
 
 ---
 
 ## 🧠 Why Superpixels as Tokens?
 
-Traditional DINO uses **deformable attention** on spatial grids (~8,400 grid cells across scales). This requires:
-- Fixed spatial grids
-- Bilinear sampling at learned offsets
-- Custom CUDA kernels
+Standard DINO utilizes **deformable attention** applied on rigid visual spatial grids (~8,400 query grid cells natively across 3+ scales). This approach mandates:
+- Fixed 2D spatial mappings
+- Bilinear interpolation sampling at learned offsets
+- Specialized compiled custom CUDA kernels (`MultiScaleDeformableAttention`)
 
-DINO-SLIC instead uses **~700 superpixel tokens** with standard `nn.MultiheadAttention`:
+DINO-SLIC inherently eliminates all the above, functioning with pure standard PyTorch components:
 
-| | Grid-based DINO | DINO-SLIC |
+| Feature Dimension | Grid-based DINO | DINO-SLIC |
 |---|---|---|
-| **Token count** | ~8,400 (80² + 40² + 20²) | ~700 (400 + 200 + 100) |
-| **Attention type** | Deformable (sparse, needs CUDA ops) | Standard MHSA (dense, pure PyTorch) |
-| **Position encoding** | Grid coordinates | Superpixel centroids |
-| **Backbone parameters** | ~23M (ResNet-50) | ~30K (linear projection only) |
-| **Feature source** | Learned convolutions | Handcrafted descriptors |
+| **Token count** | ~8,400 cells (80² + 40² + 20²) | ~700 tokens (400 + 200 + 100) |
+| **Attention type** | Deformable (Sparse sampling, custom ops) | **Standard MHSA** (Dense interaction, pure PyTorch) |
+| **Position encoding** | Rigid 2D grid integer coordinates | Continuous superpixel `(cx, cy)` centroids |
+| **Backbone parameters** | ~23-40M (ResNet/Swin) | **~35K** (Linear layer projection only!) |
+| **Memory Extraction** | Learned hierarchical convolution | Handcrafted parallel GPU statistics (`scatter_add`) |
 
 ---
 
-## 📊 Feature Vector Breakdown (113-dim)
+## 📊 Feature Vector Breakdown (136-dim)
 
-Each superpixel is described by 113 interpretable features:
+Each superpixel region maps structurally to a detailed 136-dim vector computed analytically on the GPU:
 
 | Category | Dims | What's Computed |
 |:---------|:-----|:----------------|
-| **Color** | 72 | Mean, Std, Skewness, Kurtosis per channel (RGB, Lab, HSV) + Entropy + Color Histograms (8 bins × 3 channels × 2 spaces) + Dominant Color |
-| **Shape** | 12 | Area, Perimeter, Compactness, Aspect Ratio, Eccentricity, Solidity, Extent + Hu Moments (5) |
-| **Texture** | 21 | LBP histogram (10 bins) + Gradient features (HOG-like, 9 orientation bins + magnitude stats) |
-| **Spatial** | 4 | Normalized centroid `(cx, cy)` + Distance and angle from image center |
-| **Relational** | 4 | Mean/max color contrast with neighbors + Boundary smoothness + Neighbor count ratio |
+| **Color** | **81** | **Moments:** Mean, Std, Range (approx 2σ), Skewness, Kurtosis per channel across 3 color spaces (**RGB, Lab, HSV** = 45D)<br/>**Distributions:** Channel Entropy (9D), RGB Histograms (8 bins × 3 channels = 24D), Dominant Color (3D) |
+| **Texture** | **35** | **Edges/Gradients:** Sobel mean/std (4D), Gradient Magnitude mean/std (2D), HOG histogram (9 bins)<br/>**Patterns:** GLCM approximation (contrast, energy, homogeneity, entropy = 4D), LBP histogram (16 bins) |
+| **Shape** | **12** | **Geometric:** Area, Perimeter (boundary counts), Compactness, Eccentricity<br/>**Moments:** Var Y, Var X, Cov YX, Hu Moments (log-transformed 5 moments) |
+| **Spatial** | **4** | **Location:** Normalized continuous centroid `(cx, cy)`<br/>**Relative:** Distance from center, Angle from image center |
+| **Relational** | **4** | **Context:** Mean absolute color contrast with 4-way neighbors, Mean texture diff with neighbors, Boundary strength, Graph neighbor degree count |
 
 ---
 
-## � Project Structure
+## 📁 Project Structure
 
 ```
 DINO-SLIC/
 ├── config/DINO/
-│   └── DINO_4scale_slic.py        # SLIC-specific configuration
+│   └── DINO_4scale_slic.py        # DINO configuration leveraging 'slic' backbone
 ├── models/dino/
-│   ├── slic_backbone.py           # SLIC segmentation + feature extraction
-│   ├── slic_transformer.py        # Standard MHSA encoder/decoder
-│   ├── dino.py                    # Main DINO model (SLIC branch integrated)
-│   ├── backbone.py                # Backbone builder (routes to SLIC or CNN)
-│   ├── dn_components.py           # Denoising training components
-│   ├── deformable_transformer.py  # Original deformable transformer (CNN path)
-│   └── utils.py                   # MLP, sinusoidal embeddings, etc.
-├── datasets/                      # COCO-format dataset loaders
+│   ├── slic_backbone.py           # Multi-scale GPU scatter_add 136-dim Feature Extractor
+│   ├── slic_transformer.py        # Standard MHSA Encoder/Decoder & Superpixel Positional Embeds
+│   ├── dino.py                    # Object detector root (branches CNN vs SLIC logic)
+│   ├── backbone.py                # Wrapper loader
+│   ├── matcher.py                 # Hungarian matching algorithms
+│   └── dn_components.py           # Contrastive Denoising (CDN) module
+├── datasets/                      # COCO-format APIs (Loads pre-computed .npz SLIC maps)
 ├── scripts/
-│   └── DINO_train_slic.sh         # Training launch script
-├── main.py                        # Training/evaluation entry point
-├── engine.py                      # Train/eval loops
-├── quick_test_slic.py             # Quick validation (3 smoke tests)
-└── util/                          # Utilities (misc, box_ops, slconfig, etc.)
+│   └── DINO_train_slic.sh         # Launch scripts for batch training
+├── main.py                        # Training & evaluation pipeline
+├── engine.py                      # Train epochs and logging
+└── quick_test_slic.py             # Sandbox script to validate backbone/transformer IO
 ```
 
 ---
 
-## 🔑 Key Source Files
+## 🔑 Key Components Explained
 
-### `slic_backbone.py` — The Backbone
+### `slic_backbone.py` — The Pure GPU Extractor
+Replaces standard CNNs (`ResNet50`) with `SuperpixelFeatureExtractorGPU`.
+1. Translates pre-computed `slic_maps` to flattened mappings.
+2. Extracts **136D traits** using GPU `torch.scatter_add_` directly against input RGB tensors.
+3. Applies a `FeatureProjection` (`nn.Linear` 136D -> 256D) encased in `LayerNorms`.
+4. Pads token sequences (up to `max_superpixels_per_level`) allowing batching of differently segmented variable-size image data.
+5. Emits `{'tokens', 'centroids', 'padding_mask', 'level_counts'}`.
 
-The `SLICFeatureExtractor` replaces CNN backbones entirely. It:
-1. Runs `skimage.segmentation.slic()` at 3 scales
-2. Computes 113 handcrafted features per superpixel via `_compute_features()`
-3. Projects to 256-dim via `FeatureProjection` (linear layer)
-4. Pads variable-count superpixels across the batch
-5. Returns a dict: `{tokens, centroids, padding_mask, level_counts}`
-
-### `slic_transformer.py` — The Transformer
-
-The `SLICTransformer` replaces `DeformableTransformer`. Key components:
-- **`SuperpixelPositionEmbedding`** — Sinusoidal PE from `(cx, cy)` centroids
-- **`SLICEncoder`** — Stack of standard MHSA layers
-- **`SLICDecoder`** — Cross-attention layers with iterative box refinement
-- **`gen_encoder_output_proposals_from_centroids()`** — Two-stage proposal generation where each superpixel centroid becomes a candidate detection
-
-### `dino.py` — The Orchestrator
-
-The `DINO` class detects SLIC via `isinstance(backbone, SLICFeatureExtractor)` and:
-- **`__init__`**: Skips `input_proj` (no Conv2d needed), uses `SLICTransformer`
-- **`forward`**: Calls backbone for token dict → passes directly to transformer
-- **`build_dino`**: Routes to `SLICTransformer` when `args.backbone == 'slic'`
-
-All denoising training, loss computation, and auxiliary outputs remain identical to standard DINO.
+### `slic_transformer.py` — The Standardized Transformer
+Eliminates grid-reliant MultiScale Deformable Attentions with pure PyTorch equivalents:
+- **`SuperpixelPositionEmbedding`**: Infers sin/cos traits mathematically from non-grid `[0,1]` relative `(cx, cy)` coordinates rather than arbitrary box cells.
+- **`SLICEncoder` & `SLICDecoder`**: Comprised entirely of generic O(n²) `nn.MultiheadAttention` mapping tokens directly against memory items.
+- **`gen_encoder_output_proposals_from_centroids`**: Creates Region Proposals logically anchored on centroids instead of uniformly spreading boxes over space grids.
+- Outputs rigorously conform to `batch-first` rules expected by DINO criterion checks.
 
 ---
 
@@ -131,14 +118,14 @@ All denoising training, loss computation, and auxiliary outputs remain identical
 ### Prerequisites
 
 ```bash
-pip install scikit-image scipy torch torchvision
+pip install scikit-image scipy torch torchvision numpy
 ```
 
-> **Note:** SLIC mode does **not** require the custom CUDA deformable attention ops (`models/dino/ops`). Those are only needed for the standard CNN backbone path.
+> **Note:** Compiling DINO's custom `MultiScaleDeformableAttention` CUDA extensions inside `models/dino/ops` is **NOT REQUIRED**. DINO-SLIC bypasses that code branch entirely.
 
 ### Quick Validation
 
-Run 3 smoke tests (backbone → transformer → full model):
+To verify that the GPU scatter extraction and the Transformer IO works correctly on your system:
 
 ```bash
 python3 quick_test_slic.py
@@ -147,14 +134,18 @@ python3 quick_test_slic.py
 Expected output:
 ```
 TEST 1: Backbone Token Output       ✓
-TEST 2: SLICTransformer Forward      ✓
-TEST 3: Full DINO-SLIC Model (E2E)   ✓
+TEST 2: SLICTransformer Forward     ✓
+TEST 3: Full DINO-SLIC Model (E2E)  ✓
 ALL TESTS PASSED ✓
 ```
 
+### Pre-Computing SLIC Maps
+
+DINO-SLIC operates optimally using precomputed `.npz` caches of superpixels during dataloading. Ensure your dataset API is configured to yield `targets['slic_maps'][level]`. If absent, SLIC safely falls back to executing slow unaccelerated CPU segmentation on-the-fly via `skimage`.
+
 ### Training
 
-Train on FASDD (or any COCO-format dataset):
+To begin training on a COCO-format dataset (e.g., FASDD):
 
 ```bash
 bash scripts/DINO_train_slic.sh
@@ -172,6 +163,7 @@ python3 main.py \
 
 ### Evaluation
 
+Restore a checkpoint and run test evaluations:
 ```bash
 python3 main.py \
   --output_dir outputs/DINO-SLIC/run1 \
@@ -182,28 +174,25 @@ python3 main.py \
 
 ---
 
-## ⚙️ Configuration
+## ⚙️ Configuration Parameters
 
-Key parameters in `config/DINO/DINO_4scale_slic.py`:
+Adjustments available inside `config/DINO/DINO_4scale_slic.py`:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `backbone` | `'slic'` | Selects the SLIC backbone |
-| `slic_n_segments` | `[400, 200, 100]` | Superpixels per scale (fine → coarse) |
-| `slic_compactness` | `10.0` | SLIC compactness (higher = more regular shapes) |
-| `slic_sigma` | `1.0` | Gaussian smoothing before segmentation |
-| `num_feature_levels` | `3` | Matches the 3 SLIC scales |
-| `hidden_dim` | `256` | Transformer hidden dimension |
-| `enc_layers` | `6` | Number of encoder layers |
-| `dec_layers` | `6` | Number of decoder layers |
-| `num_queries` | `900` | Max detections per image |
-| `two_stage_type` | `'standard'` | Two-stage proposal generation |
+| `backbone` | `'slic'` | Directs the model to employ the SLIC Feature pipeline. |
+| `slic_n_segments` | `[400, 200, 100]` | Superpixel count hierarchy (fine → coarse structure). |
+| `hidden_dim` | `256` | Dimensionality of projected queries and memory tokens. |
+| `enc_layers` | `6` | Standard Attention Encoder depth. |
+| `dec_layers` | `6` | Standard Attention Decoder depth. |
+| `num_queries` | `900` | Maximum candidate detection boxes proposed. |
+| `two_stage_type` | `'standard'` | Triggers purely dynamic query formulation via Encoder Centroids. |
 
 ---
 
 ## 📚 References & Credits
 
-This project is built upon the official DINO implementation:
+Built as a lightweight analytical counterpart to the primary DINO architecture:
 
 > **DINO: DETR with Improved DeNoising Anchor Boxes for End-to-End Object Detection**
 > Hao Zhang, Feng Li, Shilong Liu, Lei Zhang, Hang Su, Jun Zhu, Lionel M. Ni, Heung-Yeung Shum
