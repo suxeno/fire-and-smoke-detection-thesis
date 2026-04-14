@@ -1,7 +1,7 @@
 # ------------------------------------------------------------------------
 # DINO-SLIC
 # GPU-based Superpixel Feature Extraction Backbone (Multi-Scale)
-# Replaces CNN backbone with handcrafted superpixel features (136-dim)
+# Replaces CNN backbone with handcrafted superpixel features
 # ALL operations run on GPU via scatter_add — zero CPU transfers
 # Ported from DETR-SLIC's SuperpixelFeatureExtractorGPU
 # ------------------------------------------------------------------------
@@ -11,16 +11,22 @@ SLIC Superpixel Backbone Module (GPU-only, Multi-Scale).
 
 Pipeline:
     Pre-computed SLIC maps (per scale) + Image (on GPU)
-    → GPU Feature Extraction (136-dim per superpixel via scatter_add)
-    → Linear Projection (136 → 256)
+    → GPU Feature Extraction (handcrafted features per superpixel)
+    → Geometry path: shape+spatial+structural (18D) → normalize [0,1] → MLP → 64D
+    → Appearance path: color+texture+appearance-relational (118D) → raw
+    → Combined (182D) → LayerNorm → Linear(182→256) → LayerNorm
     → Multi-scale Superpixel Token Sequences + Normalized Centroids
 
-Feature breakdown (136-dim):
-    Color (81):    6 stats × 3ch × 3 spaces + 9 entropy + 24 hist + 3 dominant
-    Texture (35):  4 Sobel + 4 GLCM + 16 LBP + 9 HOG + 2 grad mag
-    Shape (12):    area + perimeter + compactness + var_y + var_x + cov + eccentricity + 5 Hu
-    Spatial (4):   cx + cy + dist_center + angle_center
-    Relational (4): color_diff + texture_diff + boundary_strength + degree
+Feature groups:
+    Appearance (118D):
+        Color (81):    6 stats × 3ch × 3 spaces + 9 entropy + 24 hist + 3 dominant
+        Texture (35):  4 Sobel + 4 GLCM + 16 LBP + 9 HOG + 2 grad mag
+        Relational-appearance (2): color_diff + texture_diff
+    Geometry (18D → 64D via GeometryMLP):
+        Shape (12):    area + perimeter + compactness + var_y + var_x + cov
+                       + eccentricity + 5 Hu
+        Spatial (4):   cx + cy + dist_center + angle_center
+        Relational-structural (2): boundary_strength + degree
 """
 
 import math
@@ -35,7 +41,10 @@ from util.misc import NestedTensor
 # =============================================================================
 # Constants
 # =============================================================================
-RAW_FEATURE_DIM = 136
+GEOMETRY_DIM = 18     # shape(12) + spatial(4) + boundary_strength(1) + degree(1)
+APPEARANCE_DIM = 118  # color(81) + texture(35) + color_diff(1) + texture_diff(1)
+GEO_EMBED_DIM = 64    # geometry MLP output dimension
+COMBINED_DIM = APPEARANCE_DIM + GEO_EMBED_DIM  # 182 (input to final projection)
 
 
 # =============================================================================
@@ -87,10 +96,118 @@ def rgb_to_hsv(rgb: torch.Tensor) -> torch.Tensor:
 
 
 # =============================================================================
+# Geometry MLP — Dedicated embedding for shape/spatial/structural features
+# =============================================================================
+class GeometryMLP(nn.Module):
+    """2-layer MLP that normalizes and embeds geometry features.
+
+    Geometry features (shape 12D + spatial 4D + structural-relational 2D = 18D)
+    are first normalized to [0, 1] via feature-specific rescaling, then embedded
+    via a learned MLP to produce a compact geometry representation.
+
+    Architecture:
+        normalize [0,1] → Linear(18→64) → GELU → LayerNorm(64)
+                        → Linear(64→64) → LayerNorm(64)
+
+    Args:
+        input_dim: raw geometry feature dimension (default: 18)
+        embed_dim: output embedding dimension (default: 64)
+        debug: print tensor stats when True
+    """
+
+    def __init__(
+        self,
+        input_dim: int = GEOMETRY_DIM,
+        embed_dim: int = GEO_EMBED_DIM,
+        debug: bool = False,
+    ):
+        super().__init__()
+        self.input_dim = input_dim
+        self.embed_dim = embed_dim
+        self.debug = debug
+
+        # 2-layer MLP: input_dim → embed_dim → embed_dim
+        self.linear1 = nn.Linear(input_dim, embed_dim)
+        self.act = nn.GELU()
+        self.norm1 = nn.LayerNorm(embed_dim)
+        self.linear2 = nn.Linear(embed_dim, embed_dim)
+        self.norm2 = nn.LayerNorm(embed_dim)
+
+    def _normalize_geometry(self, geo: torch.Tensor) -> torch.Tensor:
+        """Feature-specific normalization to [0, 1].
+
+        Input ordering (18D):
+            [0]  area           [0, ~0.01]  → /0.02
+            [1]  perimeter      [0, ~0.5]   → /0.6
+            [2]  compactness    [0, 1]      → passthrough
+            [3]  var_y          [0, ~0.08]  → /0.1
+            [4]  var_x          [0, ~0.08]  → /0.1
+            [5]  cov_yx         [-0.05,0.05]→ /0.1 + 0.5
+            [6]  eccentricity   [0, 1]      → passthrough
+            [7:12] hu_log (5D)  [-20, 20]   → /40 + 0.5
+            [12] cx             [0, 1]      → passthrough
+            [13] cy             [0, 1]      → passthrough
+            [14] dist_center    [0, ~0.7]   → /0.8
+            [15] angle_center   [-π, π]     → /(2π) + 0.5
+            [16] boundary_str   [0, ~1]     → passthrough
+            [17] degree         [0, ~1]     → passthrough
+
+        Returns:
+            Normalized tensor, same shape as input, values in [0, 1].
+        """
+        out = geo.clone()
+        out[:, :, 0]    = (geo[:, :, 0] / 0.02)                         # area
+        out[:, :, 1]    = (geo[:, :, 1] / 0.6)                          # perimeter
+        # [2] compactness — already [0,1]
+        out[:, :, 3]    = (geo[:, :, 3] / 0.1)                          # var_y
+        out[:, :, 4]    = (geo[:, :, 4] / 0.1)                          # var_x
+        out[:, :, 5]    = (geo[:, :, 5] / 0.1 + 0.5)                    # cov_yx
+        # [6] eccentricity — already [0,1]
+        out[:, :, 7:12] = (geo[:, :, 7:12] / 40.0 + 0.5)               # hu_log
+        # [12] cx, [13] cy — already [0,1]
+        out[:, :, 14]   = (geo[:, :, 14] / 0.8)                         # dist_center
+        out[:, :, 15]   = (geo[:, :, 15] / (2.0 * math.pi) + 0.5)      # angle_center
+        # [16] boundary_strength, [17] degree — already ~[0,1]
+        return out.clamp(0.0, 1.0)
+
+    def forward(self, geo_features: torch.Tensor) -> torch.Tensor:
+        """Normalize and embed geometry features.
+
+        Args:
+            geo_features: [B, K, 18] raw geometry features
+        Returns:
+            geo_embed: [B, K, embed_dim] learned geometry embedding
+        """
+        if self.debug:
+            print(f"[GeometryMLP] Input: {geo_features.shape}, "
+                  f"mean={geo_features.mean():.4f}, std={geo_features.std():.4f}")
+
+        x = self._normalize_geometry(geo_features)
+
+        if self.debug:
+            print(f"[GeometryMLP] After norm: mean={x.mean():.4f}, "
+                  f"std={x.std():.4f}, min={x.min():.4f}, max={x.max():.4f}")
+
+        x = self.norm1(self.act(self.linear1(x)))
+        x = self.norm2(self.linear2(x))
+
+        if self.debug:
+            print(f"[GeometryMLP] Output: {x.shape}, "
+                  f"mean={x.mean():.4f}, std={x.std():.4f}")
+
+        return x
+
+
+# =============================================================================
 # GPU Feature Extractor
 # =============================================================================
 class SuperpixelFeatureExtractorGPU(nn.Module):
-    """Extracts 136-dim handcrafted features from superpixels entirely on GPU.
+    """Extracts handcrafted features from superpixels entirely on GPU.
+
+    Feature extraction produces appearance (118D) and geometry (18D) features.
+    Geometry features are embedded via a dedicated GeometryMLP (18D → 64D)
+    before being concatenated with appearance features. The combined 182D
+    vector is then projected to the transformer hidden dimension.
 
     Uses scatter_add for all per-superpixel aggregation — no Python loops,
     no CPU transfers during the forward pass.
@@ -98,17 +215,33 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
     Args:
         hidden_dim: transformer hidden dimension (projection output)
         max_superpixels: padding limit for the token sequence
+        geo_embed_dim: geometry MLP output dimension
+        debug: print tensor shapes and stats when True
     """
 
-    def __init__(self, hidden_dim: int = 256, max_superpixels: int = 300):
+    def __init__(
+        self,
+        hidden_dim: int = 256,
+        max_superpixels: int = 300,
+        geo_embed_dim: int = GEO_EMBED_DIM,
+        debug: bool = False,
+    ):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.max_superpixels = max_superpixels
-        self.raw_feature_dim = RAW_FEATURE_DIM
+        self.debug = debug
 
-        # Input LN -> Linear -> Output LN
-        self.input_norm = nn.LayerNorm(RAW_FEATURE_DIM)
-        self.projection = nn.Linear(RAW_FEATURE_DIM, hidden_dim)
+        # Geometry embedding: 18D → geo_embed_dim (64D)
+        self.geometry_mlp = GeometryMLP(
+            input_dim=GEOMETRY_DIM,
+            embed_dim=geo_embed_dim,
+            debug=debug,
+        )
+
+        # Combined projection: appearance(118D) + geo_embed(64D) = 182D → hidden_dim
+        combined_dim = APPEARANCE_DIM + geo_embed_dim
+        self.input_norm = nn.LayerNorm(combined_dim)
+        self.projection = nn.Linear(combined_dim, hidden_dim)
         self.output_norm = nn.LayerNorm(hidden_dim)
 
         # Sobel kernels (registered as buffers for GPU persistence)
@@ -130,12 +263,22 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
         self._init_weights()
 
     def _init_weights(self):
+        # Final projection
         nn.init.xavier_uniform_(self.projection.weight)
         nn.init.zeros_(self.projection.bias)
         nn.init.constant_(self.input_norm.weight, 1.0)
         nn.init.constant_(self.input_norm.bias, 0.0)
         nn.init.constant_(self.output_norm.weight, 1.0)
         nn.init.constant_(self.output_norm.bias, 0.0)
+        # GeometryMLP
+        nn.init.xavier_uniform_(self.geometry_mlp.linear1.weight)
+        nn.init.zeros_(self.geometry_mlp.linear1.bias)
+        nn.init.xavier_uniform_(self.geometry_mlp.linear2.weight)
+        nn.init.zeros_(self.geometry_mlp.linear2.bias)
+        nn.init.constant_(self.geometry_mlp.norm1.weight, 1.0)
+        nn.init.constant_(self.geometry_mlp.norm1.bias, 0.0)
+        nn.init.constant_(self.geometry_mlp.norm2.weight, 1.0)
+        nn.init.constant_(self.geometry_mlp.norm2.bias, 0.0)
 
     # -----------------------------------------------------------------
     # Color features (81D)
@@ -484,7 +627,12 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
         self, sp_map, rgb_mean, grad_mag_mean, centroids, mask,
         B, K, H, W, device
     ):
-        """Compute 4D relational features via boundary scatter."""
+        """Compute relational features via boundary scatter.
+
+        Returns two tensors, split by feature group:
+            appear_rel: [B, K, 2] — color_diff, texture_diff (appearance)
+            geo_rel:    [B, K, 2] — boundary_strength, degree (structural/geometry)
+        """
         sp_map_pad = F.pad(sp_map.unsqueeze(1).float(), (1, 1, 1, 1), mode='replicate').squeeze(1).long()
 
         neighbors_r = sp_map_pad[:, 1:-1, 2:]
@@ -530,7 +678,9 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
         boundary_strength = mean_texture_diff
         degree = neighbor_count / 4.0
 
-        return torch.cat([mean_color_diff, mean_texture_diff, boundary_strength, degree], dim=2)  # 4D
+        appear_rel = torch.cat([mean_color_diff, mean_texture_diff], dim=2)  # 2D
+        geo_rel = torch.cat([boundary_strength, degree], dim=2)              # 2D
+        return appear_rel, geo_rel
 
     # -----------------------------------------------------------------
     # Forward
@@ -606,29 +756,40 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
         mag_sum.scatter_add_(1, sp_idx_1, mag_flat)
         grad_mag_mean = mag_sum / safe_counts
 
-        relational_feat = self._compute_relational_features(
+        appear_rel, geo_rel = self._compute_relational_features(
             slic_maps, rgb_mean, grad_mag_mean, centroids, mask, B, K, H, W, device
-        )  # 4D
+        )  # 2D + 2D
 
-        # ── Concatenate all features ──
-        raw_features = torch.cat([
-            color_feat,      # 81D
-            texture_feat,    # 35D
-            shape_feat,      # 12D
-            spatial_feat,    # 4D
-            relational_feat, # 4D
-        ], dim=2)  # Total: 136D
+        mask_float = mask.unsqueeze(-1).float()
 
-        # Clean up NaN/Inf
-        raw_features = torch.nan_to_num(raw_features, nan=0.0, posinf=1.0, neginf=-1.0)
+        # ── Geometry path: shape(12) + spatial(4) + geo_rel(2) = 18D ──
+        geometry_raw = torch.cat([shape_feat, spatial_feat, geo_rel], dim=2)  # 18D
+        geometry_raw = torch.nan_to_num(geometry_raw, nan=0.0, posinf=1.0, neginf=-1.0)
+        geometry_raw = geometry_raw * mask_float
+        geo_embed = self.geometry_mlp(geometry_raw)  # 64D
 
-        # Zero out invalid superpixels
-        raw_features = raw_features * mask.unsqueeze(-1).float()
+        # ── Appearance path: color(81) + texture(35) + appear_rel(2) = 118D ──
+        appearance_raw = torch.cat([color_feat, texture_feat, appear_rel], dim=2)  # 118D
+        appearance_raw = torch.nan_to_num(appearance_raw, nan=0.0, posinf=1.0, neginf=-1.0)
+        appearance_raw = appearance_raw * mask_float
 
-        # Project: 136 → hidden_dim with LayerNorm stabilization
-        features = self.input_norm(raw_features)
+        # ── Combined projection: 118D + 64D = 182D → hidden_dim ──
+        combined = torch.cat([appearance_raw, geo_embed], dim=2)  # 182D
+        features = self.input_norm(combined)
         features = self.projection(features)
         features = self.output_norm(features)
+
+        if self.debug:
+            print(f"[SuperpixelFeatureExtractorGPU] geometry_raw: {geometry_raw.shape}, "
+                  f"mean={geometry_raw.mean():.4f}, std={geometry_raw.std():.4f}")
+            print(f"[SuperpixelFeatureExtractorGPU] geo_embed: {geo_embed.shape}, "
+                  f"mean={geo_embed.mean():.4f}, std={geo_embed.std():.4f}")
+            print(f"[SuperpixelFeatureExtractorGPU] appearance_raw: {appearance_raw.shape}, "
+                  f"mean={appearance_raw.mean():.4f}, std={appearance_raw.std():.4f}")
+            print(f"[SuperpixelFeatureExtractorGPU] combined: {combined.shape}, "
+                  f"mean={combined.mean():.4f}, std={combined.std():.4f}")
+            print(f"[SuperpixelFeatureExtractorGPU] output: {features.shape}, "
+                  f"mean={features.mean():.4f}, std={features.std():.4f}")
 
         return features, mask, centroids
 

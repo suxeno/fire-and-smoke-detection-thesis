@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 def test_backbone_output():
     """Test that SLICFeatureExtractor outputs token sequences + centroids."""
-    from models.dino.slic_backbone import SLICFeatureExtractor, RAW_FEATURE_DIM
+    from models.dino.slic_backbone import SLICFeatureExtractor
     from util.misc import NestedTensor
 
     print("=" * 60)

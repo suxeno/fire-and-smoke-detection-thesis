@@ -1,35 +1,47 @@
 _base_ = ['coco_transformer.py']
 
-num_classes=91
+num_classes=2
 
-lr = 0.0001
+lr = 1e-04
 param_dict_type = 'default'
-lr_backbone = 1e-05
+lr_backbone = 1e-04
 lr_backbone_names = ['backbone.0']
-lr_linear_proj_names = ['reference_points', 'sampling_offsets']
+lr_linear_proj_names = []
 lr_linear_proj_mult = 0.1
 ddetr_lr_param = False
 batch_size = 2
 weight_decay = 0.0001
-epochs = 12
-lr_drop = 11
+epochs = 100
+lr_drop = 80
 save_checkpoint_interval = 1
 clip_max_norm = 0.1
 onecyclelr = False
 multi_step_lr = False
-lr_drop_list = [33, 45]
+lr_drop_list = [25, 35]
 
 
 modelname = 'dino'
 frozen_weights = None
-backbone = 'convnext_xlarge_22k'
+backbone = 'graph'
 use_checkpoint = False
+
+# SLIC superpixel parameters (pre-computed maps)
+slic_n_segments = [400, 200, 100]
+slic_compactness = 10.0
+slic_sigma = 1.0
+
+# Graph backbone (CNN + GAT) parameters
+cnn_out_channels = 64
+gcn_hidden_dim = 128
+gcn_num_layers = 3
+gcn_edge_dim = 32
+gcn_heads = 4
 
 dilation = False
 position_embedding = 'sine'
 pe_temperatureH = 20
 pe_temperatureW = 20
-return_interm_indices = [1, 2, 3]
+return_interm_indices = [0, 1, 2]
 backbone_freeze_keywords = None
 enc_layers = 6
 dec_layers = 6
@@ -52,7 +64,7 @@ dabdetr_deformable_decoder = False
 use_deformable_box_attn = False
 box_attn_type = 'roi_align'
 dec_layer_number = None
-num_feature_levels = 4
+num_feature_levels = 3
 enc_n_points = 4
 dec_n_points = 4
 decoder_layer_noise = False
@@ -100,14 +112,13 @@ dn_number = 100
 dn_box_noise_scale = 0.4
 dn_label_noise_ratio = 0.5
 embed_init_tgt = True
-dn_labelbook_size = 91
+dn_labelbook_size = 3
 
 match_unstable_error = True
 
 # for ema
-use_ema = False
+use_ema = True
 ema_decay = 0.9997
 ema_epoch = 0
 
 use_detached_boxes_dec_out = False
-
