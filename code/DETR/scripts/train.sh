@@ -6,7 +6,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # CONFIGURATION
 DATA_PATH="/home/Media/Dataset/FASDD/FASDD_CV"
-OUTPUT_DIR="./outputs/from_scratch"
+OUTPUT_DIR="./outputs/Pretrained"
+RESUME_URL="https://dl.fbaipublicfiles.com/detr/detr-r50-e632da11.pth"
 
 # Training parameters
 EPOCHS=36
@@ -18,8 +19,8 @@ ENC_LAYERS=6
 DEC_LAYERS=6
 
 # Learning rates
-LR=1e-4
-LR_BACKBONE=1e-5
+LR=1e-5
+LR_BACKBONE=1e-6
 
 # START TRAINING
 echo "DETR Training"
@@ -41,6 +42,7 @@ nohup python3 main.py \
     --dec_layers $DEC_LAYERS \
     --lr $LR \
     --lr_backbone $LR_BACKBONE \
+    --resume "$RESUME_URL" \
     --no_aux_loss \
     > train-detr.log 2>&1 &     
 

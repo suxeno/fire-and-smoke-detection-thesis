@@ -272,6 +272,18 @@ def main(args):
 
     print("Start training")
     start_time = time.time()
+
+    # Initialize plotting early so output structure always includes plots/
+    plots_dir = None
+    plot_generator = None
+    if args.output_dir and utils.is_main_process():
+        plots_dir = output_dir / "plots"
+        plots_dir.mkdir(exist_ok=True)
+        try:
+            from util.plot_utils import generate_training_plots
+            plot_generator = generate_training_plots
+        except Exception as e:
+            print(f"Warning: Plot generator unavailable, plots will be skipped: {e}")
     
     # Track cumulative timing
     total_train_time = 0
@@ -341,6 +353,14 @@ def main(args):
                         torch.save(coco_evaluator.coco_eval["bbox"].eval,
                                    output_dir / "eval" / name)
 
+            # Update plots after each completed epoch so interrupted runs still keep plots
+            if plot_generator is not None:
+                try:
+                    plot_generator(json_log_path, plots_dir)
+                    print(f"Epoch {epoch}: training plots updated in {plots_dir}")
+                except Exception as e:
+                    print(f"Warning: Could not generate plots at epoch {epoch}: {e}")
+
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
@@ -391,16 +411,13 @@ def main(args):
         except Exception as e:
             print(f"Warning: Could not run test set evaluation: {e}")
     
-    # Generate plots after training
-    if args.output_dir and utils.is_main_process():
+    # Final plot refresh after training completion
+    if args.output_dir and utils.is_main_process() and plot_generator is not None:
         try:
-            from util.plot_utils import generate_training_plots
-            plots_dir = output_dir / "plots"
-            plots_dir.mkdir(exist_ok=True)
-            generate_training_plots(output_dir / "training_log.json", plots_dir)
-            print(f"Training plots saved to {plots_dir}")
+            plot_generator(json_log_path, plots_dir)
+            print(f"Final training plots saved to {plots_dir}")
         except Exception as e:
-            print(f"Warning: Could not generate plots: {e}")
+            print(f"Warning: Could not refresh final plots: {e}")
 
 
 if __name__ == '__main__':
