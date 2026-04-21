@@ -20,6 +20,21 @@ def main():
     parser.add_argument('--aux_loss', action='store_true')
     parser.add_argument('--slic_n_segments', default=200, type=int)
     parser.add_argument('--pooling_type', default='mean', type=str)
+    parser.add_argument('--hybrid_token_mode', default='mixed', type=str)
+    parser.add_argument('--compact_superpixel_ids', action='store_true')
+    parser.add_argument('--require_superpixels', action='store_true')
+    parser.add_argument('--query_prior_mode', default='none', type=str,
+                        choices=('none', 'superpixel_topk', 'superpixel_saliency'))
+    parser.add_argument('--query_prior_strength', default=0.5, type=float)
+    parser.add_argument('--query_prior_w_feature', default=0.45, type=float)
+    parser.add_argument('--query_prior_w_color', default=0.25, type=float)
+    parser.add_argument('--query_prior_w_texture', default=0.20, type=float)
+    parser.add_argument('--query_prior_w_size', default=0.10, type=float)
+    parser.add_argument('--query_prior_loss_coef', default=0.0, type=float)
+    parser.add_argument('--encoder_attn_bias_mode', default='none', type=str)
+    parser.add_argument('--encoder_attn_bias_strength', default=1.0, type=float)
+    parser.add_argument('--decoder_attn_bias_mode', default='none', type=str)
+    parser.add_argument('--decoder_attn_bias_strength', default=1.0, type=float)
     
     # criterion args
     parser.add_argument('--dataset_file', default='coco')
@@ -32,7 +47,7 @@ def main():
     parser.add_argument('--device', default='cpu')
     parser.add_argument('--lr_backbone', default=1e-5, type=float) # for build
     
-    args = parser.parse_args([])
+    args = parser.parse_args()
     
     print("Building model...")
     model, criterion, postprocs = build(args)

@@ -41,6 +41,34 @@ def get_args_parser():
                         help="Number of superpixels to load and pool into.")
     parser.add_argument('--pooling_type', default='mean', type=str, choices=('mean', 'max', 'both'),
                         help="Type of pooling used per superpixel")
+    parser.add_argument('--hybrid_token_mode', default='mixed', type=str, choices=('superpixel', 'mixed'),
+                        help="Encoder token mode: superpixel-only or mixed pixel+superpixel tokens")
+    parser.add_argument('--compact_superpixel_ids', action='store_true',
+                        help="Compact superpixel ids per image to contiguous [0..K-1] before pooling")
+    parser.add_argument('--require_superpixels', action='store_true',
+                        help="Fail fast when expected precomputed superpixel files are missing")
+    parser.add_argument('--query_prior_mode', default='none', type=str, choices=('none', 'superpixel_topk', 'superpixel_saliency'),
+                        help="Optional decoder query initialization from superpixel tokens")
+    parser.add_argument('--query_prior_strength', default=0.5, type=float,
+                        help="Scale applied to superpixel query priors before decoder")
+    parser.add_argument('--query_prior_w_feature', default=0.45, type=float,
+                        help="Weight for pooled feature-norm score in saliency query-prior ranking")
+    parser.add_argument('--query_prior_w_color', default=0.25, type=float,
+                        help="Weight for color saliency score in saliency query-prior ranking")
+    parser.add_argument('--query_prior_w_texture', default=0.20, type=float,
+                        help="Weight for texture/intensity score in saliency query-prior ranking")
+    parser.add_argument('--query_prior_w_size', default=0.10, type=float,
+                        help="Weight for size prior (log-count) in saliency query-prior ranking")
+    parser.add_argument('--query_prior_loss_coef', default=0.0, type=float,
+                        help="Weight for optional query-prior alignment loss")
+    parser.add_argument('--encoder_attn_bias_mode', default='none', type=str, choices=('none', 'superpixel_penalty'),
+                        help="Optional encoder attention bias based on superpixel group consistency")
+    parser.add_argument('--encoder_attn_bias_strength', default=1.0, type=float,
+                        help="Penalty magnitude for cross-superpixel attention in encoder")
+    parser.add_argument('--decoder_attn_bias_mode', default='none', type=str, choices=('none', 'superpixel_penalty'),
+                        help="Optional decoder cross-attention bias based on query-to-superpixel consistency")
+    parser.add_argument('--decoder_attn_bias_strength', default=1.0, type=float,
+                        help="Penalty magnitude for decoder cross-attention to non-matching superpixels")
 
     parser.add_argument('--dilation', action='store_true',
                         help="If true, we replace stride with dilation in the last convolutional block (DC5)")
@@ -236,6 +264,20 @@ def main(args):
             f.write(f"Masks (segmentation): {args.masks}\n")
             f.write(f"Superpixel segments (DETR-HYBRID): {args.slic_n_segments}\n")
             f.write(f"Pooling type (DETR-HYBRID): {args.pooling_type}\n")
+            f.write(f"Hybrid token mode (DETR-HYBRID): {args.hybrid_token_mode}\n")
+            f.write(f"Compact superpixel ids (DETR-HYBRID): {args.compact_superpixel_ids}\n")
+            f.write(f"Require superpixel files (DETR-HYBRID): {args.require_superpixels}\n")
+            f.write(f"Query prior mode (DETR-HYBRID): {args.query_prior_mode}\n")
+            f.write(f"Query prior strength (DETR-HYBRID): {args.query_prior_strength}\n")
+            f.write(f"Query prior feature weight (DETR-HYBRID): {args.query_prior_w_feature}\n")
+            f.write(f"Query prior color weight (DETR-HYBRID): {args.query_prior_w_color}\n")
+            f.write(f"Query prior texture weight (DETR-HYBRID): {args.query_prior_w_texture}\n")
+            f.write(f"Query prior size weight (DETR-HYBRID): {args.query_prior_w_size}\n")
+            f.write(f"Query prior loss coef (DETR-HYBRID): {args.query_prior_loss_coef}\n")
+            f.write(f"Encoder attention bias mode (DETR-HYBRID): {args.encoder_attn_bias_mode}\n")
+            f.write(f"Encoder attention bias strength (DETR-HYBRID): {args.encoder_attn_bias_strength}\n")
+            f.write(f"Decoder attention bias mode (DETR-HYBRID): {args.decoder_attn_bias_mode}\n")
+            f.write(f"Decoder attention bias strength (DETR-HYBRID): {args.decoder_attn_bias_strength}\n")
             f.write(f"Total parameters: {n_parameters:,}\n\n")
             
             f.write("--- Training Config ---\n")

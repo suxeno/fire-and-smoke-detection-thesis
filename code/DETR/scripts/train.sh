@@ -6,7 +6,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # CONFIGURATION
 DATA_PATH="/home/Media/Dataset/FASDD/FASDD_CV"
-OUTPUT_DIR="./outputs/Pretrained"
+OUTPUT_DIR="./outputs/testing"
 RESUME_URL="https://dl.fbaipublicfiles.com/detr/detr-r50-e632da11.pth"
 
 # Training parameters

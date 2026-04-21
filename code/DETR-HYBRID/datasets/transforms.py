@@ -13,6 +13,33 @@ from util.box_ops import box_xyxy_to_cxcywh
 from util.misc import interpolate
 
 
+def _validate_slic_maps(target):
+    if target is None or "slic_maps" not in target:
+        return
+
+    slic_maps = target["slic_maps"]
+    if not isinstance(slic_maps, dict):
+        raise TypeError("target['slic_maps'] must be a dict of {n_segments: map}")
+
+    target_h = None
+    target_w = None
+    if "size" in target:
+        target_h = int(target["size"][0].item())
+        target_w = int(target["size"][1].item())
+
+    for n_seg, sp_map in slic_maps.items():
+        if sp_map.ndim != 2:
+            raise ValueError(f"slic_map for n_segments={n_seg} must be 2D, got shape {tuple(sp_map.shape)}")
+        if sp_map.dtype != torch.long:
+            slic_maps[n_seg] = sp_map.long()
+            sp_map = slic_maps[n_seg]
+        if target_h is not None and (sp_map.shape[0] != target_h or sp_map.shape[1] != target_w):
+            raise ValueError(
+                f"slic_map shape mismatch for n_segments={n_seg}: "
+                f"got {tuple(sp_map.shape)}, expected {(target_h, target_w)}"
+            )
+
+
 def crop(image, target, region):
     cropped_image = F.crop(image, *region)
 
@@ -281,6 +308,7 @@ class Compose(object):
     def __call__(self, image, target):
         for t in self.transforms:
             image, target = t(image, target)
+            _validate_slic_maps(target)
         return image, target
 
     def __repr__(self):

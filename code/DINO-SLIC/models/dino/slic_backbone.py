@@ -12,9 +12,9 @@ SLIC Superpixel Backbone Module (GPU-only, Multi-Scale).
 Pipeline:
     Pre-computed SLIC maps (per scale) + Image (on GPU)
     → GPU Feature Extraction (handcrafted features per superpixel)
-    → Geometry path: shape+spatial+structural (18D) → normalize [0,1] → MLP → 64D
     → Appearance path: color+texture+appearance-relational (118D) → raw
-    → Combined (182D) → LayerNorm → Linear(182→256) → LayerNorm
+    → Geometry path: shape+spatial+structural (18D) → raw
+    → Combined raw handcrafted (136D) → LayerNorm → Linear(136→256) → LayerNorm
     → Multi-scale Superpixel Token Sequences + Normalized Centroids
 
 Feature groups:
@@ -22,7 +22,7 @@ Feature groups:
         Color (81):    6 stats × 3ch × 3 spaces + 9 entropy + 24 hist + 3 dominant
         Texture (35):  4 Sobel + 4 GLCM + 16 LBP + 9 HOG + 2 grad mag
         Relational-appearance (2): color_diff + texture_diff
-    Geometry (18D → 64D via GeometryMLP):
+    Geometry (18D raw):
         Shape (12):    area + perimeter + compactness + var_y + var_x + cov
                        + eccentricity + 5 Hu
         Spatial (4):   cx + cy + dist_center + angle_center
@@ -38,18 +38,14 @@ from typing import List, Optional, Tuple
 from util.misc import NestedTensor
 
 
-# =============================================================================
 # Constants
-# =============================================================================
 GEOMETRY_DIM = 18     # shape(12) + spatial(4) + boundary_strength(1) + degree(1)
 APPEARANCE_DIM = 118  # color(81) + texture(35) + color_diff(1) + texture_diff(1)
 GEO_EMBED_DIM = 64    # geometry MLP output dimension
-COMBINED_DIM = APPEARANCE_DIM + GEO_EMBED_DIM  # 182 (input to final projection)
+COMBINED_DIM = APPEARANCE_DIM + GEOMETRY_DIM  # 136 (input to final projection)
 
 
-# =============================================================================
 # Color Space Conversions (GPU, differentiable)
-# =============================================================================
 def rgb_to_lab(rgb: torch.Tensor) -> torch.Tensor:
     """Convert RGB [B,3,H,W] in [0,1] to Lab. L:[0,1], a,b:[-1,1]."""
     mask = rgb > 0.04045
@@ -95,9 +91,7 @@ def rgb_to_hsv(rgb: torch.Tensor) -> torch.Tensor:
     return torch.cat([h, s, v], dim=1)
 
 
-# =============================================================================
 # Geometry MLP — Dedicated embedding for shape/spatial/structural features
-# =============================================================================
 class GeometryMLP(nn.Module):
     """2-layer MLP that normalizes and embeds geometry features.
 
@@ -198,15 +192,14 @@ class GeometryMLP(nn.Module):
         return x
 
 
-# =============================================================================
 # GPU Feature Extractor
-# =============================================================================
 class SuperpixelFeatureExtractorGPU(nn.Module):
     """Extracts handcrafted features from superpixels entirely on GPU.
 
     Feature extraction produces appearance (118D) and geometry (18D) features.
-    Geometry features are embedded via a dedicated GeometryMLP (18D → 64D)
-    before being concatenated with appearance features. The combined 182D
+    All handcrafted features are concatenated directly into a single 136D token
+    before projection (no geometry-only MLP branch in this path).
+    The combined 136D
     vector is then projected to the transformer hidden dimension.
 
     Uses scatter_add for all per-superpixel aggregation — no Python loops,
@@ -215,7 +208,7 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
     Args:
         hidden_dim: transformer hidden dimension (projection output)
         max_superpixels: padding limit for the token sequence
-        geo_embed_dim: geometry MLP output dimension
+        geo_embed_dim: kept for backward compatibility (unused in raw 136D mode)
         debug: print tensor shapes and stats when True
     """
 
@@ -231,15 +224,11 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
         self.max_superpixels = max_superpixels
         self.debug = debug
 
-        # Geometry embedding: 18D → geo_embed_dim (64D)
-        self.geometry_mlp = GeometryMLP(
-            input_dim=GEOMETRY_DIM,
-            embed_dim=geo_embed_dim,
-            debug=debug,
-        )
+        # Backward-compatible argument; raw-136 path does not use GeometryMLP.
+        _ = geo_embed_dim
 
-        # Combined projection: appearance(118D) + geo_embed(64D) = 182D → hidden_dim
-        combined_dim = APPEARANCE_DIM + geo_embed_dim
+        # Combined projection: appearance(118D) + geometry(18D) = 136D → hidden_dim
+        combined_dim = COMBINED_DIM
         self.input_norm = nn.LayerNorm(combined_dim)
         self.projection = nn.Linear(combined_dim, hidden_dim)
         self.output_norm = nn.LayerNorm(hidden_dim)
@@ -270,19 +259,8 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
         nn.init.constant_(self.input_norm.bias, 0.0)
         nn.init.constant_(self.output_norm.weight, 1.0)
         nn.init.constant_(self.output_norm.bias, 0.0)
-        # GeometryMLP
-        nn.init.xavier_uniform_(self.geometry_mlp.linear1.weight)
-        nn.init.zeros_(self.geometry_mlp.linear1.bias)
-        nn.init.xavier_uniform_(self.geometry_mlp.linear2.weight)
-        nn.init.zeros_(self.geometry_mlp.linear2.bias)
-        nn.init.constant_(self.geometry_mlp.norm1.weight, 1.0)
-        nn.init.constant_(self.geometry_mlp.norm1.bias, 0.0)
-        nn.init.constant_(self.geometry_mlp.norm2.weight, 1.0)
-        nn.init.constant_(self.geometry_mlp.norm2.bias, 0.0)
 
-    # -----------------------------------------------------------------
     # Color features (81D)
-    # -----------------------------------------------------------------
     def _compute_color_features(
         self, images, sp_flat, sp_idx_3, sp_idx_1, valid_float, safe_counts,
         B, K, device
@@ -373,7 +351,7 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
             hist = hist / hist_sum
             features_list.append(hist)  # 8D per channel
 
-        # --- Dominant color (3D) ---
+        # Dominant color (3D)
         rgb_sum = torch.zeros(B, K, 3, device=device)
         rgb_sum.scatter_add_(1, sp_idx_3, rgb_flat)
         dominant_color = rgb_sum / safe_counts
@@ -381,9 +359,7 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
 
         return torch.cat(features_list, dim=2)  # 81D
 
-    # -----------------------------------------------------------------
     # Texture features (35D)
-    # -----------------------------------------------------------------
     def _compute_texture_features(
         self, images, sp_flat, sp_idx_1, valid_float, safe_counts,
         B, K, H, W, device
@@ -401,7 +377,7 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
         grad_x = F.conv2d(gray, self.sobel_x, padding=1)
         grad_y = F.conv2d(gray, self.sobel_y, padding=1)
 
-        # --- Sobel gradient stats (4D): mean_x, std_x, mean_y, std_y ---
+        # Sobel gradient stats (4D): mean_x, std_x, mean_y, std_y
         gx_flat = grad_x.flatten(2).transpose(1, 2) * valid_float
         gy_flat = grad_y.flatten(2).transpose(1, 2) * valid_float
 
@@ -490,9 +466,7 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
             mag_std,         # 1D
         ], dim=2)  # 35D
 
-    # -----------------------------------------------------------------
     # Shape features (12D)
-    # -----------------------------------------------------------------
     def _compute_shape_features(
         self, sp_flat, sp_idx_1, sp_idx_2, valid_float, safe_counts, counts,
         sp_map, B, K, H, W, device
@@ -609,9 +583,7 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
             hu_log,         # 5D
         ], dim=2), centroids  # 12D total, plus centroids for later use
 
-    # -----------------------------------------------------------------
     # Spatial features (4D)
-    # -----------------------------------------------------------------
     def _compute_spatial_features(self, centroids, B, K, device):
         """Compute 4D spatial features from centroids."""
         cy = centroids[:, :, 0:1]
@@ -620,9 +592,7 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
         angle = torch.atan2(cy - 0.5, cx - 0.5)
         return torch.cat([cx, cy, dist, angle], dim=2)  # 4D
 
-    # -----------------------------------------------------------------
     # Relational features (4D)
-    # -----------------------------------------------------------------
     def _compute_relational_features(
         self, sp_map, rgb_mean, grad_mag_mean, centroids, mask,
         B, K, H, W, device
@@ -682,11 +652,13 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
         geo_rel = torch.cat([boundary_strength, degree], dim=2)              # 2D
         return appear_rel, geo_rel
 
-    # -----------------------------------------------------------------
     # Forward
-    # -----------------------------------------------------------------
     def forward(self, images: torch.Tensor, slic_maps: torch.Tensor):
-        """Extract 136-dim features per superpixel, all on GPU.
+        """Extract and project superpixel features, all on GPU.
+
+        Internal dimensions:
+            raw handcrafted = 136D (appearance 118D + geometry 18D)
+            projection input = 136D (single-token handcrafted vector)
 
         Args:
             images: [B, 3, H, W] normalized RGB images (on GPU)
@@ -766,15 +738,14 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
         geometry_raw = torch.cat([shape_feat, spatial_feat, geo_rel], dim=2)  # 18D
         geometry_raw = torch.nan_to_num(geometry_raw, nan=0.0, posinf=1.0, neginf=-1.0)
         geometry_raw = geometry_raw * mask_float
-        geo_embed = self.geometry_mlp(geometry_raw)  # 64D
 
         # ── Appearance path: color(81) + texture(35) + appear_rel(2) = 118D ──
         appearance_raw = torch.cat([color_feat, texture_feat, appear_rel], dim=2)  # 118D
         appearance_raw = torch.nan_to_num(appearance_raw, nan=0.0, posinf=1.0, neginf=-1.0)
         appearance_raw = appearance_raw * mask_float
 
-        # ── Combined projection: 118D + 64D = 182D → hidden_dim ──
-        combined = torch.cat([appearance_raw, geo_embed], dim=2)  # 182D
+        # ── Combined projection: 118D + 18D = 136D → hidden_dim ──
+        combined = torch.cat([appearance_raw, geometry_raw], dim=2)  # 136D
         features = self.input_norm(combined)
         features = self.projection(features)
         features = self.output_norm(features)
@@ -782,8 +753,6 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
         if self.debug:
             print(f"[SuperpixelFeatureExtractorGPU] geometry_raw: {geometry_raw.shape}, "
                   f"mean={geometry_raw.mean():.4f}, std={geometry_raw.std():.4f}")
-            print(f"[SuperpixelFeatureExtractorGPU] geo_embed: {geo_embed.shape}, "
-                  f"mean={geo_embed.mean():.4f}, std={geo_embed.std():.4f}")
             print(f"[SuperpixelFeatureExtractorGPU] appearance_raw: {appearance_raw.shape}, "
                   f"mean={appearance_raw.mean():.4f}, std={appearance_raw.std():.4f}")
             print(f"[SuperpixelFeatureExtractorGPU] combined: {combined.shape}, "
@@ -794,9 +763,7 @@ class SuperpixelFeatureExtractorGPU(nn.Module):
         return features, mask, centroids
 
 
-# =============================================================================
 # SLIC Feature Extractor (Multi-Scale Backbone wrapper for DINO)
-# =============================================================================
 class SLICFeatureExtractor(nn.Module):
     """SLIC Superpixel backbone for DINO (multi-scale, GPU-accelerated).
 

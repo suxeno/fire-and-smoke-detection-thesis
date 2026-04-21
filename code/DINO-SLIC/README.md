@@ -13,7 +13,7 @@ graph TD
     A[Image RGB GPU] --> B[Pre-computed SLIC Maps]
     B -->|3 scales e.g. 400, 200, 100| C
     A --> C
-    C[GPU Feature Extraction<br/>scatter_add] -->|136-dim per SP| D[Linear Projection]
+  C[GPU Feature Extraction<br/>scatter_add] -->|136-dim per SP (118 appearance + 18 geometry)| D[Linear Projection]
     D -->|256-dim| E[Token Sequences + Centroids]
     E -->|Tokens + Paddings| F[Standard MHSA Encoder]
     F -->|Encoder Memory| G[Two-stage Box Proposals<br/>from Centroids]
@@ -27,8 +27,8 @@ graph TD
 | Step | What Happens | Source |
 |------|-------------|------|
 | **1. SLIC Segmentation Maps** | Instead of running SLIC on CPU dynamically, **pre-computed SLIC `.npz` maps** are loaded from the dataset for 3 scales (e.g., `400, 200, 100`), mimicking CNN multiscale features. (CPU fallback exists). | Dataset / `slic_backbone.py` |
-| **2. GPU Feature Extraction** | For each superpixel map, a **136-dim feature vector** is extracted *entirely on the GPU* using `torch.scatter_add_`. This eliminates costly Python loops and CPU-GPU memory transfers. | `slic_backbone.py` |
-| **3. Linear Projection** | A simple `nn.Linear` layer projects the 136-dim handcrafted descriptors to 256-dim embedding tokens to match the transformer's hidden dimension. | `slic_backbone.py` |
+| **2. GPU Feature Extraction** | For each superpixel map, raw handcrafted features are extracted *entirely on the GPU* using `torch.scatter_add_`: **118D appearance + 18D geometry = 136D raw**. This eliminates costly Python loops and CPU-GPU memory transfers. | `slic_backbone.py` |
+| **3. Linear Projection** | Appearance (**118D**) and geometry (**18D**) are concatenated directly into a single **136D** handcrafted token, then `nn.Linear` projects **136D -> 256D** embedding tokens. | `slic_backbone.py` |
 | **4. Token Output** | The backbone aggregates all tokens across scales and outputs `tokens [bs, N_total, 256]`, continuous `centroids [bs, N_total, 2]`, `padding_mask` (to mask missing superpixels up to `max_superpixels_per_level`), and `level_counts`. | `slic_backbone.py` |
 | **5. Positional Encoding** | Soft sinusoidal 2D positional encoding is generated from the normalized `(cx, cy)` topological centroids of the superpixels along with learned per-level embeddings representing the scales. | `slic_transformer.py` |
 | **6. MHSA Encoder** | A purely Standard `nn.MultiheadAttention` encoder handles self-attention between the 1D sequence of non-grid tokens. | `slic_transformer.py` |
@@ -57,9 +57,10 @@ DINO-SLIC inherently eliminates all the above, functioning with pure standard Py
 
 ---
 
-## 📊 Feature Vector Breakdown (136-dim)
+## 📊 Feature Vector Breakdown (Raw 136-dim)
 
-Each superpixel region maps structurally to a detailed 136-dim vector computed analytically on the GPU:
+Each superpixel region first maps to a detailed **raw 136-dim** handcrafted vector computed analytically on the GPU.
+That raw 136D vector is fed directly to the projection layer (`136D -> 256D`).
 
 | Category | Dims | What's Computed |
 |:---------|:-----|:----------------|
@@ -78,7 +79,7 @@ DINO-SLIC/
 ├── config/DINO/
 │   └── DINO_4scale_slic.py        # DINO configuration leveraging 'slic' backbone
 ├── models/dino/
-│   ├── slic_backbone.py           # Multi-scale GPU scatter_add 136-dim Feature Extractor
+│   ├── slic_backbone.py           # Multi-scale GPU extractor (raw 136D -> 256D)
 │   ├── slic_transformer.py        # Standard MHSA Encoder/Decoder & Superpixel Positional Embeds
 │   ├── dino.py                    # Object detector root (branches CNN vs SLIC logic)
 │   ├── backbone.py                # Wrapper loader
@@ -99,8 +100,8 @@ DINO-SLIC/
 ### `slic_backbone.py` — The Pure GPU Extractor
 Replaces standard CNNs (`ResNet50`) with `SuperpixelFeatureExtractorGPU`.
 1. Translates pre-computed `slic_maps` to flattened mappings.
-2. Extracts **136D traits** using GPU `torch.scatter_add_` directly against input RGB tensors.
-3. Applies a `FeatureProjection` (`nn.Linear` 136D -> 256D) encased in `LayerNorms`.
+2. Extracts **raw handcrafted features** (`118D appearance + 18D geometry = 136D`) using GPU `torch.scatter_add_` directly against input RGB tensors.
+3. Applies a `FeatureProjection` (`nn.Linear(136 -> 256)`) encased in `LayerNorms`.
 4. Pads token sequences (up to `max_superpixels_per_level`) allowing batching of differently segmented variable-size image data.
 5. Emits `{'tokens', 'centroids', 'padding_mask', 'level_counts'}`.
 

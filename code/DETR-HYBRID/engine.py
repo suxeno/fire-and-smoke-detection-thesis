@@ -14,6 +14,22 @@ import util.misc as utils
 from datasets.coco_eval import CocoEvaluator
 
 
+def _move_target_to_device(value, device):
+    if isinstance(value, dict):
+        moved = {}
+        for k, v in value.items():
+            if k == 'slic_maps' and isinstance(v, dict):
+                # Keep full-resolution superpixel maps on CPU.
+                # The model downsamples them before moving small maps to GPU.
+                moved[k] = v
+            else:
+                moved[k] = _move_target_to_device(v, device)
+        return moved
+    if torch.is_tensor(value):
+        return value.to(device, non_blocking=True)
+    return value
+
+
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, max_norm: float = 0):
@@ -29,7 +45,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
     for samples, targets in pbar:
         samples = samples.to(device)
-        targets = [{k: {sk: sv.to(device) for sk, sv in v.items()} if isinstance(v, dict) else v.to(device) for k, v in t.items()} for t in targets]
+        targets = [_move_target_to_device(t, device) for t in targets]
 
         outputs = model(samples, targets)
         loss_dict = criterion(outputs, targets)
@@ -89,7 +105,7 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
 
     for samples, targets in pbar:
         samples = samples.to(device)
-        targets = [{k: {sk: sv.to(device) for sk, sv in v.items()} if isinstance(v, dict) else v.to(device) for k, v in t.items()} for t in targets]
+        targets = [_move_target_to_device(t, device) for t in targets]
 
         outputs = model(samples, targets)
         loss_dict = criterion(outputs, targets)

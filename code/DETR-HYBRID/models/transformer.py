@@ -44,7 +44,17 @@ class Transformer(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, src, mask, query_embed, pos_embed):
+    def forward(
+        self,
+        src,
+        mask,
+        query_embed,
+        pos_embed,
+        tgt_init=None,
+        encoder_attn_bias=None,
+        decoder_attn_bias=None,
+        debug=False,
+    ):
         # flatten NxCxHxW to HWxNxC
         bs, c, h, w = src.shape
         src = src.flatten(2).permute(2, 0, 1)
@@ -52,10 +62,54 @@ class Transformer(nn.Module):
         query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
         mask = mask.flatten(1)
 
-        tgt = torch.zeros_like(query_embed)
-        memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
-        hs = self.decoder(tgt, memory, memory_key_padding_mask=mask,
+        encoder_key_padding_mask = mask
+        if encoder_attn_bias is not None and encoder_key_padding_mask.dtype == torch.bool:
+            encoder_key_padding_mask = torch.zeros_like(mask, dtype=src.dtype)
+            encoder_key_padding_mask[mask] = float("-inf")
+
+        decoder_memory_key_padding_mask = mask
+        if decoder_attn_bias is not None and decoder_memory_key_padding_mask.dtype == torch.bool:
+            decoder_memory_key_padding_mask = torch.zeros_like(mask, dtype=src.dtype)
+            decoder_memory_key_padding_mask[mask] = float("-inf")
+
+        if tgt_init is None:
+            tgt = torch.zeros_like(query_embed)
+        else:
+            if tgt_init.dim() != 3 or tgt_init.shape[0] != bs or tgt_init.shape[1] != query_embed.shape[0] or tgt_init.shape[2] != query_embed.shape[2]:
+                raise ValueError(
+                    f"tgt_init must be [B, num_queries, d_model], got {tuple(tgt_init.shape)} "
+                    f"expected ({bs}, {query_embed.shape[0]}, {query_embed.shape[2]})"
+                )
+            tgt = tgt_init.permute(1, 0, 2)
+
+        if decoder_attn_bias is not None:
+            expected_shape = (bs * self.nhead, query_embed.shape[0], src.shape[0])
+            if decoder_attn_bias.shape != expected_shape:
+                raise ValueError(
+                    f"decoder_attn_bias must be [B*nhead, num_queries, num_tokens], got {tuple(decoder_attn_bias.shape)} "
+                    f"expected {expected_shape}"
+                )
+
+        if debug:
+            print(f"[Transformer] Input src shape: {src.shape}")
+            print(f"[Transformer] Input src mean: {src.mean().item():.4f}, std: {src.std().item():.4f}")
+            print(f"[Transformer] Input tgt shape: {tgt.shape}")
+            print(f"[Transformer] Input tgt mean: {tgt.mean().item():.4f}, std: {tgt.std().item():.4f}")
+            if encoder_attn_bias is not None:
+                print(f"[Transformer] Encoder attn bias shape: {encoder_attn_bias.shape}")
+                print(f"[Transformer] Encoder attn bias mean: {encoder_attn_bias.mean().item():.4f}, std: {encoder_attn_bias.std().item():.4f}")
+            if decoder_attn_bias is not None:
+                print(f"[Transformer] Decoder attn bias shape: {decoder_attn_bias.shape}")
+                print(f"[Transformer] Decoder attn bias mean: {decoder_attn_bias.mean().item():.4f}, std: {decoder_attn_bias.std().item():.4f}")
+
+        memory = self.encoder(src, mask=encoder_attn_bias, src_key_padding_mask=encoder_key_padding_mask, pos=pos_embed)
+        hs = self.decoder(tgt, memory, memory_mask=decoder_attn_bias, memory_key_padding_mask=decoder_memory_key_padding_mask,
                           pos=pos_embed, query_pos=query_embed)
+
+        if debug:
+            print(f"[Transformer] Output hs shape: {hs.shape}")
+            print(f"[Transformer] Output hs mean: {hs.mean().item():.4f}, std: {hs.std().item():.4f}")
+
         return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w)
 
 
