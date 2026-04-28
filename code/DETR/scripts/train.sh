@@ -42,6 +42,7 @@ nohup python3 main.py \
     --dec_layers $DEC_LAYERS \
     --lr $LR \
     --lr_backbone $LR_BACKBONE \
+    --eff_timing \
     --resume "$RESUME_URL" \
     --no_aux_loss \
     > train-detr.log 2>&1 &     

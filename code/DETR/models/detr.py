@@ -62,11 +62,63 @@ class DETR(nn.Module):
 
         src, mask = features[-1].decompose()
         assert mask is not None
-        hs = self.transformer(self.input_proj(src), mask, self.query_embed.weight, pos[-1])[0]
+
+        def _estimate_transformer_gflops(encoder_seq_len: int) -> float:
+            # Rough analytic estimate per image forward pass.
+            tr = self.transformer
+            d = float(tr.d_model)
+            q = float(self.num_queries)
+            s = float(encoder_seq_len)
+            num_enc = int(getattr(tr.encoder, 'num_layers', len(getattr(tr.encoder, 'layers', []))))
+            num_dec = int(getattr(tr.decoder, 'num_layers', len(getattr(tr.decoder, 'layers', []))))
+            try:
+                dim_ff = float(tr.encoder.layers[0].linear1.out_features)
+            except Exception:
+                dim_ff = 4.0 * d
+
+            enc_self = (4.0 * s * d * d) + (2.0 * s * s * d)
+            enc_ffn = 2.0 * s * d * dim_ff
+            enc = num_enc * (enc_self + enc_ffn)
+
+            dec_self = (4.0 * q * d * d) + (2.0 * q * q * d)
+            dec_cross = ((2.0 * q + 2.0 * s) * d * d) + (2.0 * q * s * d)
+            dec_ffn = 2.0 * q * d * dim_ff
+            dec = num_dec * (dec_self + dec_cross + dec_ffn)
+
+            return (enc + dec) / 1e9
+
+        proj = self.input_proj(src)
+        bs, _, hf, wf = proj.shape
+        pixel_mask_tokens = mask.flatten(1)
+        pixel_valid_counts = (~pixel_mask_tokens).sum(dim=1).to(torch.float32)
+        encoder_seq_len = int(hf * wf)
+        gflops = _estimate_transformer_gflops(encoder_seq_len)
+
+        hs = self.transformer(proj, mask, self.query_embed.weight, pos[-1])[0]
 
         outputs_class = self.class_embed(hs)
         outputs_coord = self.bbox_embed(hs).sigmoid()
-        out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
+        out = {
+            'pred_logits': outputs_class[-1],
+            'pred_boxes': outputs_coord[-1],
+            # Efficiency metrics (baseline DETR has no pruning / no superpixel tokens).
+            'eff_pixel_prune_enabled': 0,
+            'eff_pixel_prune_keep_ratio_target': 1.0,
+            'eff_pixel_keep_ratio_actual': 1.0,
+            'eff_pixel_tokens_before': float(pixel_valid_counts.mean().item()),
+            'eff_pixel_tokens_after': float(pixel_valid_counts.mean().item()),
+            'eff_superpixel_tokens': 0.0,
+            'eff_tokens_before': float(pixel_valid_counts.mean().item()),
+            'eff_tokens_after': float(pixel_valid_counts.mean().item()),
+            'eff_tokens_ratio': 1.0,
+            'eff_encoder_seq_len_before': float(encoder_seq_len),
+            'eff_encoder_seq_len_after': float(encoder_seq_len),
+            'eff_encoder_seq_len_ratio': 1.0,
+            'eff_encoder_seq_len_reduction': 0.0,
+            'eff_gflops_before': float(gflops),
+            'eff_gflops_after': float(gflops),
+            'eff_gflops_ratio': 1.0,
+        }
         if self.aux_loss:
             out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)
         return out

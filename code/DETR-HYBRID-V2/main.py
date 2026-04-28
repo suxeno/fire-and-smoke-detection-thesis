@@ -35,6 +35,42 @@ def get_args_parser():
     # * Backbone
     parser.add_argument('--backbone', default='resnet50', type=str,
                         help="Name of the convolutional backbone to use")
+    
+    # DETR-HYBRID specific
+    parser.add_argument('--slic_n_segments', default=200, type=int,
+                        help="Number of superpixels to load and pool into.")
+    parser.add_argument('--pooling_type', default='mean', type=str, choices=('mean', 'max', 'both'),
+                        help="Type of pooling used per superpixel")
+    parser.add_argument('--hybrid_token_mode', default='mixed', type=str, choices=('superpixel', 'mixed'),
+                        help="Encoder token mode: superpixel-only or mixed pixel+superpixel tokens")
+    parser.add_argument('--compact_superpixel_ids', action='store_true',
+                        help="Compact superpixel ids per image to contiguous [0..K-1] before pooling")
+    parser.add_argument('--require_superpixels', action='store_true',
+                        help="Fail fast when expected precomputed superpixel files are missing")
+
+    # Efficiency-first pixel-token pruning (DETR-HYBRID-V2)
+    parser.add_argument('--pixel_prune', action='store_true',
+                        help="Enable superpixel-driven pixel-token pruning for efficiency")
+    parser.add_argument('--pixel_prune_keep_ratio', default=0.8, type=float,
+                        help="Target keep ratio for pixel tokens (clamped to [0.6, 0.8])")
+    parser.add_argument('--pixel_prune_score_mode', default='saliency', type=str,
+                        choices=('saliency', 'feature_norm', 'counts'),
+                        help="Superpixel ranking mode used to select kept pixel tokens")
+    parser.add_argument('--pixel_prune_w_feature', default=0.45, type=float,
+                        help="Weight for pooled feature-norm score in saliency ranking")
+    parser.add_argument('--pixel_prune_w_color', default=0.25, type=float,
+                        help="Weight for color saliency score in saliency ranking")
+    parser.add_argument('--pixel_prune_w_texture', default=0.20, type=float,
+                        help="Weight for texture/intensity score in saliency ranking")
+    parser.add_argument('--pixel_prune_w_size', default=0.10, type=float,
+                        help="Weight for size prior (log-count) in saliency ranking")
+
+    # Efficiency benchmarking metrics (applies to both train and eval)
+    parser.add_argument('--eff_timing', action='store_true',
+                        help="Log forward-pass latency/throughput metrics")
+    parser.add_argument('--eff_timing_sync_cuda', action='store_true',
+                        help="Synchronize CUDA for accurate timings (slower)")
+
     parser.add_argument('--dilation', action='store_true',
                         help="If true, we replace stride with dilation in the last convolutional block (DC5)")
     parser.add_argument('--position_embedding', default='sine', type=str, choices=('sine', 'learned'),
@@ -83,12 +119,6 @@ def get_args_parser():
     parser.add_argument('--dataset_file', default='coco')
     parser.add_argument('--coco_path', type=str)
     parser.add_argument('--remove_difficult', action='store_true')
-
-    # Efficiency benchmarking metrics
-    parser.add_argument('--eff_timing', action='store_true',
-                        help="Log forward-pass latency/throughput metrics")
-    parser.add_argument('--eff_timing_sync_cuda', action='store_true',
-                        help="Synchronize CUDA for accurate timings (slower)")
 
     parser.add_argument('--output_dir', default='',
                         help='path where to save, empty for no saving')
@@ -195,8 +225,13 @@ def main(args):
 
     if args.eval:
         test_stats, coco_evaluator = evaluate(
-            model, criterion, postprocessors,
-            data_loader_val, base_ds, device, args.output_dir,
+            model,
+            criterion,
+            postprocessors,
+            data_loader_val,
+            base_ds,
+            device,
+            args.output_dir,
             eff_timing=args.eff_timing,
             eff_timing_sync_cuda=args.eff_timing_sync_cuda,
         )
@@ -237,6 +272,18 @@ def main(args):
             f.write(f"Position embedding: {args.position_embedding}\n")
             f.write(f"Auxiliary loss: {args.aux_loss}\n")
             f.write(f"Masks (segmentation): {args.masks}\n")
+            f.write(f"Superpixel segments (DETR-HYBRID): {args.slic_n_segments}\n")
+            f.write(f"Pooling type (DETR-HYBRID): {args.pooling_type}\n")
+            f.write(f"Hybrid token mode (DETR-HYBRID): {args.hybrid_token_mode}\n")
+            f.write(f"Compact superpixel ids (DETR-HYBRID): {args.compact_superpixel_ids}\n")
+            f.write(f"Require superpixel files (DETR-HYBRID): {args.require_superpixels}\n")
+            f.write(f"Pixel prune enabled (DETR-HYBRID-V2): {args.pixel_prune}\n")
+            f.write(f"Pixel prune keep ratio (DETR-HYBRID-V2): {args.pixel_prune_keep_ratio}\n")
+            f.write(f"Pixel prune score mode (DETR-HYBRID-V2): {args.pixel_prune_score_mode}\n")
+            f.write(
+                "Pixel prune weights (feature/color/texture/size) (DETR-HYBRID-V2): "
+                f"{args.pixel_prune_w_feature}/{args.pixel_prune_w_color}/{args.pixel_prune_w_texture}/{args.pixel_prune_w_size}\n"
+            )
             f.write(f"Efficiency timing enabled: {args.eff_timing}\n")
             f.write(f"Efficiency timing CUDA sync: {args.eff_timing_sync_cuda}\n")
             f.write(f"Total parameters: {n_parameters:,}\n\n")
@@ -275,6 +322,18 @@ def main(args):
 
     print("Start training")
     start_time = time.time()
+
+    # Initialize plotting early so output structure always includes plots/
+    plots_dir = None
+    plot_generator = None
+    if args.output_dir and utils.is_main_process():
+        plots_dir = output_dir / "plots"
+        plots_dir.mkdir(exist_ok=True)
+        try:
+            from util.plot_utils import generate_training_plots
+            plot_generator = generate_training_plots
+        except Exception as e:
+            print(f"Warning: Plot generator unavailable, plots will be skipped: {e}")
     
     # Track cumulative timing
     total_train_time = 0
@@ -312,7 +371,8 @@ def main(args):
         # Validation with timing
         epoch_val_start = time.time()
         test_stats, coco_evaluator = evaluate(
-            model, criterion, postprocessors, data_loader_val, base_ds, device, args.output_dir,
+            model, criterion, postprocessors, data_loader_val, base_ds, device, args.output_dir
+            ,
             eff_timing=args.eff_timing,
             eff_timing_sync_cuda=args.eff_timing_sync_cuda,
         )
@@ -349,6 +409,14 @@ def main(args):
                         torch.save(coco_evaluator.coco_eval["bbox"].eval,
                                    output_dir / "eval" / name)
 
+            # Update plots after each completed epoch so interrupted runs still keep plots
+            if plot_generator is not None:
+                try:
+                    plot_generator(json_log_path, plots_dir)
+                    print(f"Epoch {epoch}: training plots updated in {plots_dir}")
+                except Exception as e:
+                    print(f"Warning: Could not generate plots at epoch {epoch}: {e}")
+
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
@@ -381,7 +449,8 @@ def main(args):
             
             test_start = time.time()
             test_stats_final, test_coco_evaluator = evaluate(
-                model, criterion, postprocessors, data_loader_test, base_ds_test, device, args.output_dir,
+                model, criterion, postprocessors, data_loader_test, base_ds_test, device, args.output_dir
+                ,
                 eff_timing=args.eff_timing,
                 eff_timing_sync_cuda=args.eff_timing_sync_cuda,
             )
@@ -401,16 +470,13 @@ def main(args):
         except Exception as e:
             print(f"Warning: Could not run test set evaluation: {e}")
     
-    # Generate plots after training
-    if args.output_dir and utils.is_main_process():
+    # Final plot refresh after training completion
+    if args.output_dir and utils.is_main_process() and plot_generator is not None:
         try:
-            from util.plot_utils import generate_training_plots
-            plots_dir = output_dir / "plots"
-            plots_dir.mkdir(exist_ok=True)
-            generate_training_plots(output_dir / "training_log.json", plots_dir)
-            print(f"Training plots saved to {plots_dir}")
+            plot_generator(json_log_path, plots_dir)
+            print(f"Final training plots saved to {plots_dir}")
         except Exception as e:
-            print(f"Warning: Could not generate plots: {e}")
+            print(f"Warning: Could not refresh final plots: {e}")
 
 
 if __name__ == '__main__':
