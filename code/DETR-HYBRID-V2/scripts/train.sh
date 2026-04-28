@@ -36,6 +36,10 @@ PIXEL_PRUNE_W_SIZE="0.10"
 LR=1e-5
 LR_BACKBONE=1e-6
 
+# Mixed precision (AMP) - recommended on GPU
+USE_AMP=true
+AMP_DTYPE="fp16"   # fp16 | bf16
+
 # START TRAINING
 echo "DETR-HYBRID-V2 Training"
 echo "======================================"
@@ -55,6 +59,7 @@ echo "Pixel prune keep ratio: $PIXEL_PRUNE_KEEP_RATIO"
 echo "Pixel prune score mode: $PIXEL_PRUNE_SCORE_MODE"
 echo "Pixel prune weights (feature/color/texture/size): $PIXEL_PRUNE_W_FEATURE/$PIXEL_PRUNE_W_COLOR/$PIXEL_PRUNE_W_TEXTURE/$PIXEL_PRUNE_W_SIZE"
 echo "Efficiency timing: enabled"
+echo "AMP: $USE_AMP ($AMP_DTYPE)"
 echo ""
 
 nohup python3 main.py \
@@ -80,6 +85,8 @@ nohup python3 main.py \
     --pixel_prune_w_texture "$PIXEL_PRUNE_W_TEXTURE" \
     --pixel_prune_w_size "$PIXEL_PRUNE_W_SIZE" \
     --eff_timing \
+    $( [[ "$USE_AMP" == "true" ]] && echo "--amp" ) \
+    --amp_dtype "$AMP_DTYPE" \
     --resume "$RESUME_URL" \
     --no_aux_loss \
     > train.log 2>&1 &     

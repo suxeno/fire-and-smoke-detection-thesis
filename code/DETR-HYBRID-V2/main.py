@@ -71,6 +71,12 @@ def get_args_parser():
     parser.add_argument('--eff_timing_sync_cuda', action='store_true',
                         help="Synchronize CUDA for accurate timings (slower)")
 
+    # Mixed precision (AMP)
+    parser.add_argument('--amp', action='store_true',
+                        help='Enable native PyTorch AMP (autocast). Recommended on GPU.')
+    parser.add_argument('--amp_dtype', default='fp16', type=str, choices=('fp16', 'bf16'),
+                        help="AMP dtype: 'fp16' (uses GradScaler) or 'bf16' (no scaler).")
+
     parser.add_argument('--dilation', action='store_true',
                         help="If true, we replace stride with dilation in the last convolutional block (DC5)")
     parser.add_argument('--position_embedding', default='sine', type=str, choices=('sine', 'learned'),
@@ -147,6 +153,12 @@ def main(args):
     print(args)
 
     device = torch.device(args.device)
+
+    # AMP setup (only meaningful for CUDA)
+    use_amp = bool(getattr(args, 'amp', False)) and device.type == 'cuda'
+    if getattr(args, 'amp', False) and device.type != 'cuda':
+        print("Warning: --amp requested but device is not CUDA; AMP will be disabled.")
+    scaler = torch.cuda.amp.GradScaler(enabled=(use_amp and args.amp_dtype == 'fp16'))
 
     # fix the seed for reproducibility
     seed = args.seed + utils.get_rank()
@@ -232,6 +244,8 @@ def main(args):
             base_ds,
             device,
             args.output_dir,
+            amp=use_amp,
+            amp_dtype=args.amp_dtype,
             eff_timing=args.eff_timing,
             eff_timing_sync_cuda=args.eff_timing_sync_cuda,
         )
@@ -347,6 +361,9 @@ def main(args):
         train_stats = train_one_epoch(
             model, criterion, data_loader_train, optimizer, device, epoch,
             args.clip_max_norm,
+            amp=use_amp,
+            amp_dtype=args.amp_dtype,
+            scaler=scaler,
             eff_timing=args.eff_timing,
             eff_timing_sync_cuda=args.eff_timing_sync_cuda,
         )
@@ -373,6 +390,8 @@ def main(args):
         test_stats, coco_evaluator = evaluate(
             model, criterion, postprocessors, data_loader_val, base_ds, device, args.output_dir
             ,
+            amp=use_amp,
+            amp_dtype=args.amp_dtype,
             eff_timing=args.eff_timing,
             eff_timing_sync_cuda=args.eff_timing_sync_cuda,
         )
@@ -451,6 +470,8 @@ def main(args):
             test_stats_final, test_coco_evaluator = evaluate(
                 model, criterion, postprocessors, data_loader_test, base_ds_test, device, args.output_dir
                 ,
+                amp=use_amp,
+                amp_dtype=args.amp_dtype,
                 eff_timing=args.eff_timing,
                 eff_timing_sync_cuda=args.eff_timing_sync_cuda,
             )
