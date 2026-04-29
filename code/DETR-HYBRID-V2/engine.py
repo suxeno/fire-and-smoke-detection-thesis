@@ -10,7 +10,21 @@ from typing import Iterable
 from tqdm import tqdm
 
 import torch
-from torch.cuda.amp import autocast, GradScaler
+
+try:
+    from torch.amp import autocast as _autocast
+    from torch.amp import GradScaler
+    _HAS_TORCH_AMP = True
+except Exception:
+    from torch.cuda.amp import autocast as _cuda_autocast
+    from torch.cuda.amp import GradScaler
+    _HAS_TORCH_AMP = False
+
+def _make_autocast(device_type: str, enabled: bool, dtype):
+    """Create an autocast context using the modern API when available."""
+    if _HAS_TORCH_AMP:
+        return _autocast(device_type=device_type, enabled=enabled, dtype=dtype)
+    return _cuda_autocast(enabled=enabled, dtype=dtype)
 
 import util.misc as utils
 from datasets.coco_eval import CocoEvaluator
@@ -64,7 +78,11 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         if eff_timing and eff_timing_sync_cuda and torch.cuda.is_available():
             torch.cuda.synchronize()
         fwd_start = time.perf_counter() if eff_timing else None
-        with autocast(enabled=use_amp, dtype=autocast_dtype):
+        if _HAS_TORCH_AMP:
+            autocast_ctx = _autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype)
+        else:
+            autocast_ctx = _cuda_autocast(enabled=use_amp, dtype=autocast_dtype)
+        with autocast_ctx:
             outputs = model(samples, targets)
         if eff_timing and eff_timing_sync_cuda and torch.cuda.is_available():
             torch.cuda.synchronize()
@@ -79,7 +97,11 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         if eff_out:
             metric_logger.update(**eff_out)
 
-        with autocast(enabled=use_amp, dtype=autocast_dtype):
+        if _HAS_TORCH_AMP:
+            loss_autocast_ctx = _autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype)
+        else:
+            loss_autocast_ctx = _cuda_autocast(enabled=use_amp, dtype=autocast_dtype)
+        with loss_autocast_ctx:
             loss_dict = criterion(outputs, targets)
             weight_dict = criterion.weight_dict
             losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
@@ -173,7 +195,11 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
         if eff_timing and eff_timing_sync_cuda and torch.cuda.is_available():
             torch.cuda.synchronize()
         fwd_start = time.perf_counter() if eff_timing else None
-        with autocast(enabled=use_amp, dtype=autocast_dtype):
+        if _HAS_TORCH_AMP:
+            autocast_ctx = _autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype)
+        else:
+            autocast_ctx = _cuda_autocast(enabled=use_amp, dtype=autocast_dtype)
+        with autocast_ctx:
             outputs = model(samples, targets)
         if eff_timing and eff_timing_sync_cuda and torch.cuda.is_available():
             torch.cuda.synchronize()
@@ -188,7 +214,11 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
         if eff_out:
             metric_logger.update(**eff_out)
 
-        with autocast(enabled=use_amp, dtype=autocast_dtype):
+        if _HAS_TORCH_AMP:
+            loss_autocast_ctx = _autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype)
+        else:
+            loss_autocast_ctx = _cuda_autocast(enabled=use_amp, dtype=autocast_dtype)
+        with loss_autocast_ctx:
             loss_dict = criterion(outputs, targets)
             weight_dict = criterion.weight_dict
 

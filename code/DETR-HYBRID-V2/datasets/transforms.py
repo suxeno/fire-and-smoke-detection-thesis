@@ -9,6 +9,13 @@ import torch
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
 
+try:
+    import cv2  # type: ignore
+    _HAS_CV2 = True
+except Exception:
+    cv2 = None
+    _HAS_CV2 = False
+
 from util.box_ops import box_xyxy_to_cxcywh
 from util.misc import interpolate
 
@@ -166,8 +173,18 @@ def resize(image, target, size, max_size=None):
 
     if "slic_maps" in target:
         for k in target['slic_maps']:
-            target['slic_maps'][k] = interpolate(
-                target['slic_maps'][k][None, None].float(), size, mode="nearest")[0, 0].long()
+            sp_map = target['slic_maps'][k]
+            # Performance path: resizing an integer label map via torch.interpolate requires
+            # float conversion and is relatively slow on CPU. Use OpenCV nearest-neighbor
+            # when available (keeps integer semantics).
+            if _HAS_CV2 and sp_map.device.type == 'cpu':
+                sp_np = sp_map.numpy().astype('int32', copy=False)
+                # OpenCV expects (width, height)
+                resized = cv2.resize(sp_np, (int(size[1]), int(size[0])), interpolation=cv2.INTER_NEAREST)
+                target['slic_maps'][k] = torch.from_numpy(resized).to(dtype=torch.long)
+            else:
+                target['slic_maps'][k] = interpolate(
+                    sp_map[None, None].float(), size, mode="nearest")[0, 0].long()
 
     return rescaled_image, target
 

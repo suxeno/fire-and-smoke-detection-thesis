@@ -11,6 +11,14 @@ import torch
 from torch.utils.data import DataLoader, DistributedSampler
 import torch.nn as nn
 
+
+def _build_grad_scaler(device: torch.device, enabled: bool):
+    # torch.cuda.amp.GradScaler is deprecated in newer PyTorch;
+    # prefer torch.amp.GradScaler('cuda', ...).
+    if device.type == 'cuda' and hasattr(torch, 'amp') and hasattr(torch.amp, 'GradScaler'):
+        return torch.amp.GradScaler('cuda', enabled=enabled)
+    return torch.cuda.amp.GradScaler(enabled=enabled)
+
 import datasets
 import util.misc as utils
 from datasets import build_dataset, get_coco_api_from_dataset
@@ -38,32 +46,33 @@ def get_args_parser():
     
     # DETR-HYBRID specific
     parser.add_argument('--slic_n_segments', default=200, type=int,
-                        help="Number of superpixels to load and pool into.")
-    parser.add_argument('--pooling_type', default='mean', type=str, choices=('mean', 'max', 'both'),
-                        help="Type of pooling used per superpixel")
-    parser.add_argument('--hybrid_token_mode', default='mixed', type=str, choices=('superpixel', 'mixed'),
-                        help="Encoder token mode: superpixel-only or mixed pixel+superpixel tokens")
-    parser.add_argument('--compact_superpixel_ids', action='store_true',
-                        help="Compact superpixel ids per image to contiguous [0..K-1] before pooling")
+                        help="Number of SLIC superpixel segments for pruning guidance.")
     parser.add_argument('--require_superpixels', action='store_true',
                         help="Fail fast when expected precomputed superpixel files are missing")
 
-    # Efficiency-first pixel-token pruning (DETR-HYBRID-V2)
+    # Superpixel-guided pixel-token pruning (DETR-HYBRID-V2)
     parser.add_argument('--pixel_prune', action='store_true',
                         help="Enable superpixel-driven pixel-token pruning for efficiency")
-    parser.add_argument('--pixel_prune_keep_ratio', default=0.8, type=float,
-                        help="Target keep ratio for pixel tokens (clamped to [0.6, 0.8])")
-    parser.add_argument('--pixel_prune_score_mode', default='saliency', type=str,
+    parser.add_argument('--pixel_prune_keep_ratio', default=0.7, type=float,
+                        help="Fraction of pixel tokens to keep after pruning (clamped to [0.6, 0.8])")
+    parser.add_argument('--pixel_prune_score_mode', default='feature_norm', type=str,
                         choices=('saliency', 'feature_norm', 'counts'),
-                        help="Superpixel ranking mode used to select kept pixel tokens")
+                        help="How to rank pixels for pruning: "
+                             "'feature_norm' = L2 norm of backbone features (fast, no extra args); "
+                             "'saliency' = weighted multi-cue score (uses --pixel_prune_w_* weights); "
+                             "'counts' = raw superpixel pixel counts")
+    # The following weights are ONLY used when --pixel_prune_score_mode=saliency
     parser.add_argument('--pixel_prune_w_feature', default=0.45, type=float,
-                        help="Weight for pooled feature-norm score in saliency ranking")
+                        help="[saliency mode only] Weight for feature-norm component")
     parser.add_argument('--pixel_prune_w_color', default=0.25, type=float,
-                        help="Weight for color saliency score in saliency ranking")
+                        help="[saliency mode only] Weight for fire/smoke color cues")
     parser.add_argument('--pixel_prune_w_texture', default=0.20, type=float,
-                        help="Weight for texture/intensity score in saliency ranking")
+                        help="[saliency mode only] Weight for texture/gradient magnitude")
     parser.add_argument('--pixel_prune_w_size', default=0.10, type=float,
-                        help="Weight for size prior (log-count) in saliency ranking")
+                        help="[saliency mode only] Weight for superpixel size prior")
+    parser.add_argument('--pixel_prune_warmup_epochs', default=0, type=int,
+                        help="Number of initial epochs to train WITHOUT pruning (full context). "
+                             "Pruning activates at epoch >= this value.")
 
     # Efficiency benchmarking metrics (applies to both train and eval)
     parser.add_argument('--eff_timing', action='store_true',
@@ -154,11 +163,28 @@ def main(args):
 
     device = torch.device(args.device)
 
+    # Performance knobs (safe defaults for modern NVIDIA GPUs like RTX 5090)
+    if device.type == 'cuda':
+        try:
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+        except Exception:
+            pass
+        try:
+            torch.set_float32_matmul_precision('high')
+        except Exception:
+            pass
+        # NOTE: cudnn.benchmark=True is HARMFUL for DETR because multi-scale
+        # augmentation produces variable input sizes (many unique H×W combos).
+        # Each new size triggers cudnn autotuning (~4s on Blackwell GPUs),
+        # making training appear ~15x slower.  Keep it disabled.
+        torch.backends.cudnn.benchmark = False
+
     # AMP setup (only meaningful for CUDA)
     use_amp = bool(getattr(args, 'amp', False)) and device.type == 'cuda'
     if getattr(args, 'amp', False) and device.type != 'cuda':
         print("Warning: --amp requested but device is not CUDA; AMP will be disabled.")
-    scaler = torch.cuda.amp.GradScaler(enabled=(use_amp and args.amp_dtype == 'fp16'))
+    scaler = _build_grad_scaler(device, enabled=(use_amp and args.amp_dtype == 'fp16'))
 
     # fix the seed for reproducibility
     seed = args.seed + utils.get_rank()
@@ -201,9 +227,17 @@ def main(args):
         sampler_train, args.batch_size, drop_last=True)
 
     data_loader_train = DataLoader(dataset_train, batch_sampler=batch_sampler_train,
-                                   collate_fn=utils.collate_fn, num_workers=args.num_workers)
+                                                                     collate_fn=utils.collate_fn,
+                                                                     num_workers=args.num_workers,
+                                                                     pin_memory=(device.type == 'cuda'),
+                                                                     persistent_workers=(args.num_workers > 0),
+                                                                     prefetch_factor=(2 if args.num_workers > 0 else None))
     data_loader_val = DataLoader(dataset_val, args.batch_size, sampler=sampler_val,
-                                 drop_last=False, collate_fn=utils.collate_fn, num_workers=args.num_workers)
+                                                                 drop_last=False, collate_fn=utils.collate_fn,
+                                                                 num_workers=args.num_workers,
+                                                                 pin_memory=(device.type == 'cuda'),
+                                                                 persistent_workers=(args.num_workers > 0),
+                                                                 prefetch_factor=(2 if args.num_workers > 0 else None))
 
     base_ds = get_coco_api_from_dataset(dataset_val)
 
@@ -286,20 +320,18 @@ def main(args):
             f.write(f"Position embedding: {args.position_embedding}\n")
             f.write(f"Auxiliary loss: {args.aux_loss}\n")
             f.write(f"Masks (segmentation): {args.masks}\n")
-            f.write(f"Superpixel segments (DETR-HYBRID): {args.slic_n_segments}\n")
-            f.write(f"Pooling type (DETR-HYBRID): {args.pooling_type}\n")
-            f.write(f"Hybrid token mode (DETR-HYBRID): {args.hybrid_token_mode}\n")
-            f.write(f"Compact superpixel ids (DETR-HYBRID): {args.compact_superpixel_ids}\n")
-            f.write(f"Require superpixel files (DETR-HYBRID): {args.require_superpixels}\n")
-            f.write(f"Pixel prune enabled (DETR-HYBRID-V2): {args.pixel_prune}\n")
-            f.write(f"Pixel prune keep ratio (DETR-HYBRID-V2): {args.pixel_prune_keep_ratio}\n")
-            f.write(f"Pixel prune score mode (DETR-HYBRID-V2): {args.pixel_prune_score_mode}\n")
-            f.write(
-                "Pixel prune weights (feature/color/texture/size) (DETR-HYBRID-V2): "
-                f"{args.pixel_prune_w_feature}/{args.pixel_prune_w_color}/{args.pixel_prune_w_texture}/{args.pixel_prune_w_size}\n"
-            )
+            f.write(f"Superpixel segments: {args.slic_n_segments}\n")
+            f.write(f"Require superpixel files: {args.require_superpixels}\n")
+            f.write(f"Pixel prune enabled: {args.pixel_prune}\n")
+            f.write(f"Pixel prune keep ratio: {args.pixel_prune_keep_ratio}\n")
+            f.write(f"Pixel prune score mode: {args.pixel_prune_score_mode}\n")
+            f.write(f"Pixel prune warmup epochs: {args.pixel_prune_warmup_epochs}\n")
+            if args.pixel_prune_score_mode == 'saliency':
+                f.write(
+                    "Saliency weights (feature/color/texture/size): "
+                    f"{args.pixel_prune_w_feature}/{args.pixel_prune_w_color}/{args.pixel_prune_w_texture}/{args.pixel_prune_w_size}\n"
+                )
             f.write(f"Efficiency timing enabled: {args.eff_timing}\n")
-            f.write(f"Efficiency timing CUDA sync: {args.eff_timing_sync_cuda}\n")
             f.write(f"Total parameters: {n_parameters:,}\n\n")
             
             f.write("--- Training Config ---\n")
@@ -356,6 +388,19 @@ def main(args):
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:    
             sampler_train.set_epoch(epoch)
+
+        # --- Pruning warmup schedule ---
+        if getattr(args, 'pixel_prune', False):
+            warmup = getattr(args, 'pixel_prune_warmup_epochs', 0)
+            m = model_without_ddp
+            if epoch < warmup:
+                m.pixel_prune = False
+                print(f"Epoch {epoch}: Pruning DISABLED (warmup {epoch+1}/{warmup})")
+            else:
+                m.pixel_prune = True
+                if epoch == warmup:
+                    print(f"Epoch {epoch}: Pruning ENABLED (warmup complete, keep_ratio={m.pixel_prune_keep_ratio})")
+
         # Training with timing
         epoch_train_start = time.time()
         train_stats = train_one_epoch(

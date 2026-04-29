@@ -29,6 +29,15 @@ Notes:
 - `--pixel_prune_keep_ratio` is clamped to **[0.6, 0.8]** in code.
 - Pruning is implemented by gathering/padding tokens so the **encoder sequence length actually shrinks** (not just masking).
 
+### Warmup / Delayed Pruning
+
+Pruning from epoch 0 can hurt accuracy because the backbone features are not yet adapted to the target domain (fire/smoke). Use `--pixel_prune_warmup_epochs N` to disable pruning for the first N epochs:
+
+- **Epochs 0 to N-1**: pruning is disabled, the model trains with full pixel context (vanilla DETR behavior).
+- **Epoch N onward**: pruning activates at the configured keep ratio.
+
+This gives the backbone time to learn domain-specific features before the pruning scorer starts making decisions. Typical value: `10`.
+
 ## 3. Efficiency Metrics (`eff_*`)
 
 The model emits numeric `eff_*` entries in its forward output dict; `engine.py` automatically logs them during train/eval.
@@ -165,6 +174,7 @@ python3 main.py \
   --pixel_prune \
   --pixel_prune_keep_ratio 0.8 \
   --pixel_prune_score_mode saliency \
+  --pixel_prune_warmup_epochs 10 \
   --eff_timing \
   --no_aux_loss
 ```
@@ -203,6 +213,7 @@ python3 main.py \
 | `--pixel_prune_w_color` | Saliency weight: color cue | float (default `0.25`) |
 | `--pixel_prune_w_texture` | Saliency weight: texture/intensity cue | float (default `0.20`) |
 | `--pixel_prune_w_size` | Saliency weight: size prior | float (default `0.10`) |
+| `--pixel_prune_warmup_epochs` | Epochs to train without pruning before activating it | int (default `0`) |
 | `--eff_timing` | Log forward/throughput metrics | flag |
 | `--eff_timing_sync_cuda` | Synchronize CUDA for timing accuracy | flag |
 

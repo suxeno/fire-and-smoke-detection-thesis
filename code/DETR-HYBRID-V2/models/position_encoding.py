@@ -47,42 +47,6 @@ class PositionEmbeddingSine(nn.Module):
         pos = torch.cat((pos_y, pos_x), dim=3).permute(0, 3, 1, 2)
         return pos
 
-class PositionEmbeddingSuperpixel(nn.Module):
-    """
-    Position embedding for superpixels where inputs are normalized [0, 1] centroids.
-    """
-    def __init__(self, num_pos_feats=64, temperature=10000, scale=None):
-        super().__init__()
-        self.num_pos_feats = num_pos_feats
-        self.temperature = temperature
-        if scale is None:
-            scale = 2 * math.pi
-        self.scale = scale
-
-    def forward(self, centroids: torch.Tensor, debug=False):
-        # centroids: [B, 2, N, 1] where dim 1 is (y, x) in [0, 1]
-        y_embed = centroids[:, 0, :, :] * self.scale
-        x_embed = centroids[:, 1, :, :] * self.scale
-
-        dim_t = torch.arange(self.num_pos_feats, dtype=torch.float32, device=centroids.device)
-        dim_t = self.temperature ** (2 * (dim_t // 2) / self.num_pos_feats)
-
-        pos_x = x_embed[:, :, :, None] / dim_t
-        pos_y = y_embed[:, :, :, None] / dim_t
-        
-        pos_x = torch.stack((pos_x[:, :, :, 0::2].sin(), pos_x[:, :, :, 1::2].cos()), dim=4).flatten(3)
-        pos_y = torch.stack((pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), dim=4).flatten(3)
-        
-        pos = torch.cat((pos_y, pos_x), dim=3).permute(0, 3, 1, 2) # -> [B, 2*num_pos_feats, N, 1]
-        
-        if debug:
-            print(f"[PositionEmbeddingSuperpixel] Input centroids shape: {centroids.shape}")
-            print(f"[PositionEmbeddingSuperpixel] Input centroids mean: {centroids.mean().item():.4f}, std: {centroids.std().item():.4f}")
-            print(f"[PositionEmbeddingSuperpixel] Output pos shape: {pos.shape}")
-            print(f"[PositionEmbeddingSuperpixel] Output pos mean: {pos.mean().item():.4f}, std: {pos.std().item():.4f}")
-            
-        return pos
-
 
 class PositionEmbeddingLearned(nn.Module):
     """

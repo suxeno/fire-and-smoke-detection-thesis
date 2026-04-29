@@ -11,6 +11,15 @@ from tqdm import tqdm
 
 import torch
 
+try:
+    from torch.amp import autocast as _autocast
+    from torch.amp import GradScaler
+    _HAS_TORCH_AMP = True
+except Exception:
+    from torch.cuda.amp import autocast as _cuda_autocast
+    from torch.cuda.amp import GradScaler
+    _HAS_TORCH_AMP = False
+
 import util.misc as utils
 from datasets.coco_eval import CocoEvaluator
 
@@ -18,6 +27,9 @@ from datasets.coco_eval import CocoEvaluator
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, max_norm: float = 0,
+                    amp: bool = False,
+                    amp_dtype: str = 'fp16',
+                    scaler: GradScaler | None = None,
                     eff_timing: bool = False,
                     eff_timing_sync_cuda: bool = False):
     model.train()
@@ -30,6 +42,12 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
     pbar = tqdm(data_loader, desc=header, leave=False)
 
+    use_amp = bool(amp) and device.type == 'cuda'
+    if use_amp and amp_dtype not in ('fp16', 'bf16'):
+        raise ValueError(f"Invalid amp_dtype={amp_dtype!r}. Choose 'fp16' or 'bf16'.")
+    autocast_dtype = torch.float16 if amp_dtype == 'fp16' else torch.bfloat16
+    use_scaler = use_amp and amp_dtype == 'fp16' and scaler is not None and scaler.is_enabled()
+
     for samples, targets in pbar:
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
@@ -38,7 +56,12 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         if eff_timing and eff_timing_sync_cuda and torch.cuda.is_available():
             torch.cuda.synchronize()
         fwd_start = time.perf_counter() if eff_timing else None
-        outputs = model(samples)
+        if _HAS_TORCH_AMP:
+            autocast_ctx = _autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype)
+        else:
+            autocast_ctx = _cuda_autocast(enabled=use_amp, dtype=autocast_dtype)
+        with autocast_ctx:
+            outputs = model(samples)
         if eff_timing and eff_timing_sync_cuda and torch.cuda.is_available():
             torch.cuda.synchronize()
         if eff_timing:
@@ -52,9 +75,14 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         if eff_out:
             metric_logger.update(**eff_out)
 
-        loss_dict = criterion(outputs, targets)
-        weight_dict = criterion.weight_dict
-        losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
+        if _HAS_TORCH_AMP:
+            loss_autocast_ctx = _autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype)
+        else:
+            loss_autocast_ctx = _cuda_autocast(enabled=use_amp, dtype=autocast_dtype)
+        with loss_autocast_ctx:
+            loss_dict = criterion(outputs, targets)
+            weight_dict = criterion.weight_dict
+            losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
 
         # reduce losses over all GPUs for logging purposes
         loss_dict_reduced = utils.reduce_dict(loss_dict)
@@ -71,11 +99,19 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             print(loss_dict_reduced)
             sys.exit(1)
 
-        optimizer.zero_grad()
-        losses.backward()
-        if max_norm > 0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
-        optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
+        if use_scaler:
+            scaler.scale(losses).backward()
+            if max_norm > 0:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            losses.backward()
+            if max_norm > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+            optimizer.step()
 
         if eff_timing:
             iter_ms = (time.perf_counter() - iter_start) * 1000.0
@@ -98,6 +134,8 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
 @torch.no_grad()
 def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, output_dir,
+             amp: bool = False,
+             amp_dtype: str = 'fp16',
              eff_timing: bool = False,
              eff_timing_sync_cuda: bool = False):
     model.eval()
@@ -113,6 +151,21 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
 
     pbar = tqdm(data_loader, desc=header, leave=False)
 
+    use_amp = bool(amp) and device.type == 'cuda'
+    if use_amp and amp_dtype not in ('fp16', 'bf16'):
+        raise ValueError(f"Invalid amp_dtype={amp_dtype!r}. Choose 'fp16' or 'bf16'.")
+    autocast_dtype = torch.float16 if amp_dtype == 'fp16' else torch.bfloat16
+
+    def _to_fp32(obj):
+        if torch.is_tensor(obj) and obj.is_floating_point():
+            return obj.float()
+        if isinstance(obj, dict):
+            return {k: _to_fp32(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            t = [_to_fp32(v) for v in obj]
+            return type(obj)(t)
+        return obj
+
     for samples, targets in pbar:
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
@@ -120,7 +173,12 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
         if eff_timing and eff_timing_sync_cuda and torch.cuda.is_available():
             torch.cuda.synchronize()
         fwd_start = time.perf_counter() if eff_timing else None
-        outputs = model(samples)
+        if _HAS_TORCH_AMP:
+            autocast_ctx = _autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype)
+        else:
+            autocast_ctx = _cuda_autocast(enabled=use_amp, dtype=autocast_dtype)
+        with autocast_ctx:
+            outputs = model(samples)
         if eff_timing and eff_timing_sync_cuda and torch.cuda.is_available():
             torch.cuda.synchronize()
         if eff_timing:
@@ -134,8 +192,13 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
         if eff_out:
             metric_logger.update(**eff_out)
 
-        loss_dict = criterion(outputs, targets)
-        weight_dict = criterion.weight_dict
+        if _HAS_TORCH_AMP:
+            loss_autocast_ctx = _autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype)
+        else:
+            loss_autocast_ctx = _cuda_autocast(enabled=use_amp, dtype=autocast_dtype)
+        with loss_autocast_ctx:
+            loss_dict = criterion(outputs, targets)
+            weight_dict = criterion.weight_dict
 
         # reduce losses over all GPUs for logging purposes
         loss_dict_reduced = utils.reduce_dict(loss_dict)
@@ -152,11 +215,12 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
             'ce': f"{loss_dict_reduced_scaled['loss_ce'].item():.4f}"
         })
 
+        outputs_fp32 = _to_fp32(outputs)
         orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
-        results = postprocessors['bbox'](outputs, orig_target_sizes)
+        results = postprocessors['bbox'](outputs_fp32, orig_target_sizes)
         if 'segm' in postprocessors.keys():
             target_sizes = torch.stack([t["size"] for t in targets], dim=0)
-            results = postprocessors['segm'](results, outputs, orig_target_sizes, target_sizes)
+            results = postprocessors['segm'](results, outputs_fp32, orig_target_sizes, target_sizes)
         res = {target['image_id'].item(): output for target, output in zip(targets, results)}
         if coco_evaluator is not None:
             coco_evaluator.update(res)

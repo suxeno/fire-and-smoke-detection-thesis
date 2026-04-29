@@ -5,14 +5,14 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # CONFIGURATION
-DATA_PATH="/home/Media/Dataset/FASDD/FASDD_CV"
-OUTPUT_DIR="./outputs/testing"
+DATA_PATH="/root/datasets/FASDD/FASDD_CV"
+OUTPUT_DIR="./outputs/Pretrained-2/"
 RESUME_URL="https://dl.fbaipublicfiles.com/detr/detr-r50-e632da11.pth"
 
 # Training parameters
 EPOCHS=36
-BATCH_SIZE=2
-NUM_WORKERS=2
+BATCH_SIZE=8
+NUM_WORKERS=6
 
 # Model architecture
 ENC_LAYERS=6

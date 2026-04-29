@@ -11,6 +11,41 @@ from torch import nn
 from torchvision.models._utils import IntermediateLayerGetter
 from typing import Dict, List
 
+
+def _get_resnet_weights(name: str):
+    # Torchvision deprecated passing bool to weights=. Use the enum when available.
+    if name == 'resnet18':
+        try:
+            from torchvision.models import ResNet18_Weights
+            return ResNet18_Weights.DEFAULT
+        except Exception:
+            return True
+    if name == 'resnet34':
+        try:
+            from torchvision.models import ResNet34_Weights
+            return ResNet34_Weights.DEFAULT
+        except Exception:
+            return True
+    if name == 'resnet50':
+        try:
+            from torchvision.models import ResNet50_Weights
+            return ResNet50_Weights.DEFAULT
+        except Exception:
+            return True
+    if name == 'resnet101':
+        try:
+            from torchvision.models import ResNet101_Weights
+            return ResNet101_Weights.DEFAULT
+        except Exception:
+            return True
+    if name == 'resnet152':
+        try:
+            from torchvision.models import ResNet152_Weights
+            return ResNet152_Weights.DEFAULT
+        except Exception:
+            return True
+    return True
+
 from util.misc import NestedTensor, is_main_process
 
 from .position_encoding import build_position_encoding
@@ -88,7 +123,7 @@ class Backbone(BackboneBase):
                  dilation: bool):
         backbone = getattr(torchvision.models, name)(
             replace_stride_with_dilation=[False, False, dilation],
-            weights=True, norm_layer=FrozenBatchNorm2d)
+            weights=_get_resnet_weights(name), norm_layer=FrozenBatchNorm2d)
         num_channels = 512 if name in ('resnet18', 'resnet34') else 2048
         super().__init__(backbone, train_backbone, num_channels, return_interm_layers)
 

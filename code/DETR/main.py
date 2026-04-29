@@ -11,6 +11,12 @@ import torch
 from torch.utils.data import DataLoader, DistributedSampler
 import torch.nn as nn
 
+
+def _build_grad_scaler(device: torch.device, enabled: bool):
+    if device.type == 'cuda' and hasattr(torch, 'amp') and hasattr(torch.amp, 'GradScaler'):
+        return torch.amp.GradScaler('cuda', enabled=enabled)
+    return torch.cuda.amp.GradScaler(enabled=enabled)
+
 import datasets
 import util.misc as utils
 from datasets import build_dataset, get_coco_api_from_dataset
@@ -90,6 +96,12 @@ def get_args_parser():
     parser.add_argument('--eff_timing_sync_cuda', action='store_true',
                         help="Synchronize CUDA for accurate timings (slower)")
 
+    # Mixed precision (AMP)
+    parser.add_argument('--amp', action='store_true',
+                        help='Enable native PyTorch AMP (autocast). Recommended on GPU.')
+    parser.add_argument('--amp_dtype', default='fp16', type=str, choices=('fp16', 'bf16'),
+                        help="AMP dtype: 'fp16' (uses GradScaler) or 'bf16' (no scaler).")
+
     parser.add_argument('--output_dir', default='',
                         help='path where to save, empty for no saving')
     parser.add_argument('--device', default='cuda',
@@ -117,6 +129,25 @@ def main(args):
     print(args)
 
     device = torch.device(args.device)
+
+    # Performance knobs (for 5090)
+    if device.type == 'cuda':
+        try:
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+        except Exception:
+            pass
+        try:
+            torch.set_float32_matmul_precision('high')
+        except Exception:
+            pass
+        torch.backends.cudnn.benchmark = False
+
+    # AMP setup (only meaningful for CUDA)
+    use_amp = bool(getattr(args, 'amp', False)) and device.type == 'cuda'
+    if getattr(args, 'amp', False) and device.type != 'cuda':
+        print("Warning: --amp requested but device is not CUDA; AMP will be disabled.")
+    scaler = _build_grad_scaler(device, enabled=(use_amp and args.amp_dtype == 'fp16'))
 
     # fix the seed for reproducibility
     seed = args.seed + utils.get_rank()
@@ -159,9 +190,15 @@ def main(args):
         sampler_train, args.batch_size, drop_last=True)
 
     data_loader_train = DataLoader(dataset_train, batch_sampler=batch_sampler_train,
-                                   collate_fn=utils.collate_fn, num_workers=args.num_workers)
+                                   collate_fn=utils.collate_fn, num_workers=args.num_workers,
+                                   pin_memory=(device.type == 'cuda'),
+                                   persistent_workers=(args.num_workers > 0),
+                                   prefetch_factor=(2 if args.num_workers > 0 else None))
     data_loader_val = DataLoader(dataset_val, args.batch_size, sampler=sampler_val,
-                                 drop_last=False, collate_fn=utils.collate_fn, num_workers=args.num_workers)
+                                 drop_last=False, collate_fn=utils.collate_fn, num_workers=args.num_workers,
+                                 pin_memory=(device.type == 'cuda'),
+                                 persistent_workers=(args.num_workers > 0),
+                                 prefetch_factor=(2 if args.num_workers > 0 else None))
 
     base_ds = get_coco_api_from_dataset(dataset_val)
 
@@ -197,6 +234,8 @@ def main(args):
         test_stats, coco_evaluator = evaluate(
             model, criterion, postprocessors,
             data_loader_val, base_ds, device, args.output_dir,
+            amp=use_amp,
+            amp_dtype=args.amp_dtype,
             eff_timing=args.eff_timing,
             eff_timing_sync_cuda=args.eff_timing_sync_cuda,
         )
@@ -288,6 +327,9 @@ def main(args):
         train_stats = train_one_epoch(
             model, criterion, data_loader_train, optimizer, device, epoch,
             args.clip_max_norm,
+            amp=use_amp,
+            amp_dtype=args.amp_dtype,
+            scaler=scaler,
             eff_timing=args.eff_timing,
             eff_timing_sync_cuda=args.eff_timing_sync_cuda,
         )
@@ -313,6 +355,8 @@ def main(args):
         epoch_val_start = time.time()
         test_stats, coco_evaluator = evaluate(
             model, criterion, postprocessors, data_loader_val, base_ds, device, args.output_dir,
+            amp=use_amp,
+            amp_dtype=args.amp_dtype,
             eff_timing=args.eff_timing,
             eff_timing_sync_cuda=args.eff_timing_sync_cuda,
         )
@@ -382,6 +426,8 @@ def main(args):
             test_start = time.time()
             test_stats_final, test_coco_evaluator = evaluate(
                 model, criterion, postprocessors, data_loader_test, base_ds_test, device, args.output_dir,
+                amp=use_amp,
+                amp_dtype=args.amp_dtype,
                 eff_timing=args.eff_timing,
                 eff_timing_sync_cuda=args.eff_timing_sync_cuda,
             )

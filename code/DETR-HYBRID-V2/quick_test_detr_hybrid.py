@@ -19,15 +19,12 @@ def main():
     parser.add_argument('--masks', action='store_true')
     parser.add_argument('--aux_loss', action='store_true')
     parser.add_argument('--slic_n_segments', default=200, type=int)
-    parser.add_argument('--pooling_type', default='mean', type=str)
-    parser.add_argument('--hybrid_token_mode', default='mixed', type=str)
-    parser.add_argument('--compact_superpixel_ids', action='store_true')
     parser.add_argument('--require_superpixels', action='store_true')
 
-    # Efficiency-first pixel-token pruning
+    # Superpixel-guided pixel-token pruning
     parser.add_argument('--pixel_prune', action='store_true')
-    parser.add_argument('--pixel_prune_keep_ratio', default=0.8, type=float)
-    parser.add_argument('--pixel_prune_score_mode', default='saliency', type=str,
+    parser.add_argument('--pixel_prune_keep_ratio', default=0.7, type=float)
+    parser.add_argument('--pixel_prune_score_mode', default='feature_norm', type=str,
                         choices=('saliency', 'feature_norm', 'counts'))
     parser.add_argument('--pixel_prune_w_feature', default=0.45, type=float)
     parser.add_argument('--pixel_prune_w_color', default=0.25, type=float)

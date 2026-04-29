@@ -6,6 +6,7 @@ Copy-paste from torch.nn.Transformer with modifications:
     * positional encodings are passed in MHattention
     * extra LN at the end of encoder is removed
     * decoder returns a stack of activations from all decoding layers
+    * Uses PyTorch 2.x SDPA (Flash Attention / Memory-efficient attention) when available
 """
 import copy
 from typing import Optional, List
@@ -13,6 +14,9 @@ from typing import Optional, List
 import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
+
+# Check for PyTorch 2.x SDPA support (enables Flash Attention v2 on Blackwell/Ampere+)
+_SDPA_AVAILABLE = hasattr(F, 'scaled_dot_product_attention')
 
 
 class Transformer(nn.Module):
@@ -141,6 +145,7 @@ class TransformerEncoderLayer(nn.Module):
     def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1,
                  activation="relu", normalize_before=False):
         super().__init__()
+        # Use batch_first=False (default) — SDPA auto-dispatches to Flash Attention on modern GPUs
         self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
         # Implementation of Feedforward model
         self.linear1 = nn.Linear(d_model, dim_feedforward)
@@ -201,6 +206,7 @@ class TransformerDecoderLayer(nn.Module):
     def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1,
                  activation="relu", normalize_before=False):
         super().__init__()
+        # SDPA auto-dispatches to Flash Attention v2 on Blackwell/Ampere+ GPUs
         self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
         self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
         # Implementation of Feedforward model

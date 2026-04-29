@@ -18,23 +18,6 @@ import os
 import numpy as np
 
 
-def compact_superpixel_map(sp_map: torch.Tensor, max_segments: int) -> torch.Tensor:
-    compacted = torch.full_like(sp_map, -1)
-    valid_mask = sp_map >= 0
-    if not valid_mask.any():
-        return compacted
-
-    valid_labels = sp_map[valid_mask]
-    unique_ids, counts = torch.unique(valid_labels, return_counts=True)
-    keep_count = min(max_segments, unique_ids.numel())
-    sorted_idx = torch.argsort(counts, descending=True)
-    kept_ids = unique_ids[sorted_idx[:keep_count]]
-
-    for new_id, old_id in enumerate(kept_ids):
-        compacted[sp_map == old_id] = new_id
-
-    return compacted
-
 class CocoDetection(torchvision.datasets.CocoDetection):
     def __init__(
         self,
@@ -43,14 +26,12 @@ class CocoDetection(torchvision.datasets.CocoDetection):
         transforms,
         return_masks,
         superpixel_paths=None,
-        compact_superpixel_ids=False,
         require_superpixels=False,
     ):
         super(CocoDetection, self).__init__(img_folder, ann_file)
         self._transforms = transforms
         self.prepare = ConvertCocoPolysToMask(return_masks)
         self.superpixel_paths = superpixel_paths or {}
-        self.compact_superpixel_ids = compact_superpixel_ids
         self.require_superpixels = require_superpixels
 
     def __getitem__(self, idx):
@@ -70,11 +51,11 @@ class CocoDetection(torchvision.datasets.CocoDetection):
                         sp_map = torch.from_numpy(
                             data['sp_map'].astype(np.int64)
                         ).long()
-                        if self.compact_superpixel_ids:
-                            sp_map = compact_superpixel_map(sp_map, n_seg)
-                        else:
-                            invalid_mask = (sp_map < 0) | (sp_map >= n_seg)
-                            sp_map[invalid_mask] = -1
+                        # IMPORTANT (performance): do NOT compact superpixel IDs here.
+                        # Dataset-level compaction is full-resolution and can be very expensive.
+                        # The model can optionally compact IDs later on the *downsampled* map.
+                        invalid_mask = (sp_map < 0) | (sp_map >= n_seg)
+                        sp_map[invalid_mask] = -1
                         slic_maps[n_seg] = sp_map
                 elif self.require_superpixels:
                     raise FileNotFoundError(f"Missing superpixel map for image '{rel_path}': {sp_path}")
@@ -279,7 +260,6 @@ def build(image_set, args):
         transforms=make_coco_transforms(image_set),
         return_masks=args.masks,
         superpixel_paths=superpixel_paths,
-        compact_superpixel_ids=getattr(args, 'compact_superpixel_ids', False),
         require_superpixels=require_superpixels,
     )
     return dataset
