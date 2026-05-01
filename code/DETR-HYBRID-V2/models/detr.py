@@ -310,11 +310,8 @@ class DETR(nn.Module):
         device = proj_src.device
         P = H * W  # total pixel tokens
 
-        pixel_src_flat = proj_src.flatten(2)         # [B, C, P]
-        pixel_pos_flat = pixel_pos_embed.flatten(2)  # [B, C, P]
-        pixel_mask_flat = mask.flatten(1)             # [B, P] True=padded
-        pixel_valid_mask = ~pixel_mask_flat           # [B, P] True=valid
-
+        pixel_mask_flat = mask.flatten(1)   # [B, P] True=padded
+        pixel_valid_mask = ~pixel_mask_flat  # [B, P] True=valid
         pixel_valid_counts = pixel_valid_mask.sum(dim=1).float()  # [B]
 
         def _estimate_transformer_gflops(encoder_seq_len: int) -> float:
@@ -342,6 +339,9 @@ class DETR(nn.Module):
         pixel_kept_counts = pixel_valid_counts.clone()
 
         if self.pixel_prune and self.hybrid_token_mode == 'mixed':
+            pixel_src_flat = proj_src.flatten(2)         # [B, C, P]
+            pixel_pos_flat = pixel_pos_embed.flatten(2)  # [B, C, P]
+
             # ── Superpixel-guided pixel token pruning ──
             # 1. Build superpixel map at feature resolution
             slic_maps = [t.get('slic_maps', {}) for t in targets] if targets is not None else []
@@ -398,6 +398,8 @@ class DETR(nn.Module):
                 print(f"[DETR] Avg kept: {pixel_kept_counts.mean().item():.1f} / {pixel_valid_counts.mean().item():.1f}")
 
         elif self.hybrid_token_mode == 'superpixel':
+            pixel_src_flat = proj_src.flatten(2)         # [B, C, P]
+
             # Superpixel-only mode: pool features into superpixel tokens
             # (Legacy mode, kept for compatibility but NOT recommended for speed)
             slic_maps = [t.get('slic_maps', {}) for t in targets] if targets is not None else []
@@ -460,17 +462,10 @@ class DETR(nn.Module):
             pixel_kept_counts = torch.zeros((B,), device=device, dtype=torch.float32)
 
         else:
-            # No pruning — vanilla pixel tokens (fallback / default)
-            transformer_src = proj_src.unsqueeze(-1) if proj_src.dim() == 3 else proj_src
-            # Ensure 4D shape [B, C, P, 1] for transformer
-            if transformer_src.dim() == 4 and transformer_src.shape[-1] != 1:
-                transformer_src = proj_src.flatten(2).unsqueeze(-1)
-                transformer_pos = pixel_pos_embed.flatten(2).unsqueeze(-1)
-                transformer_mask = pixel_mask_flat.unsqueeze(-1)
-            else:
-                transformer_src = proj_src
-                transformer_pos = pixel_pos_embed
-                transformer_mask = mask
+            # No pruning — use vanilla DETR path directly.
+            transformer_src = proj_src
+            transformer_pos = pixel_pos_embed
+            transformer_mask = mask
 
         hs = self.transformer(
             transformer_src,

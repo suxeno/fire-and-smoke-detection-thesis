@@ -16,6 +16,7 @@ import datasets.transforms as T
 
 import os
 import numpy as np
+import multiprocessing as mp
 
 
 class CocoDetection(torchvision.datasets.CocoDetection):
@@ -33,6 +34,10 @@ class CocoDetection(torchvision.datasets.CocoDetection):
         self.prepare = ConvertCocoPolysToMask(return_masks)
         self.superpixel_paths = superpixel_paths or {}
         self.require_superpixels = require_superpixels
+        self._enable_superpixels = mp.Value('b', int(bool(self.superpixel_paths)))
+
+    def set_superpixel_loading(self, enabled: bool):
+        self._enable_superpixels.value = int(bool(enabled))
 
     def __getitem__(self, idx):
         img, target = super(CocoDetection, self).__getitem__(idx)
@@ -40,7 +45,7 @@ class CocoDetection(torchvision.datasets.CocoDetection):
         target = {'image_id': image_id, 'annotations': target}
         img, target = self.prepare(img, target)
         
-        if self.superpixel_paths:
+        if bool(self._enable_superpixels.value) and self.superpixel_paths:
             slic_maps = {}
             img_info = self.coco.loadImgs(image_id)[0]
             rel_path = Path(img_info['file_name'])
@@ -240,18 +245,22 @@ def build(image_set, args):
         }
 
 
-    # Resolve pre-computed superpixel map directories
+    # Resolve pre-computed superpixel map directories.
+    # Only register superpixel paths when pixel pruning is explicitly requested
+    # or when the user demanded superpixels via --require_superpixels.
     superpixel_paths = {}
     n_seg = getattr(args, 'slic_n_segments', 200)
     require_superpixels = getattr(args, 'require_superpixels', False)
-    sp_dir = root / f'superpixels-{n_seg}'
-    if sp_dir.exists():
-        superpixel_paths[n_seg] = sp_dir
-    else:
-        msg = f"Superpixel dir not found: {sp_dir}."
-        if require_superpixels:
-            raise FileNotFoundError(msg)
-        print(f"Warning: {msg}")
+    # Avoid unnecessary IO/CPU work when pruning isn't enabled.
+    if getattr(args, 'pixel_prune', False) or require_superpixels:
+        sp_dir = root / f'superpixels-{n_seg}'
+        if sp_dir.exists():
+            superpixel_paths[n_seg] = sp_dir
+        else:
+            msg = f"Superpixel dir not found: {sp_dir}."
+            if require_superpixels:
+                raise FileNotFoundError(msg)
+            print(f"Warning: {msg}")
 
     img_folder, ann_file = PATHS[image_set]
     dataset = CocoDetection(

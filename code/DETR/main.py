@@ -130,7 +130,7 @@ def main(args):
 
     device = torch.device(args.device)
 
-    # Performance knobs (for 5090)
+    # Performance knobs
     if device.type == 'cuda':
         try:
             torch.backends.cuda.matmul.allow_tf32 = True

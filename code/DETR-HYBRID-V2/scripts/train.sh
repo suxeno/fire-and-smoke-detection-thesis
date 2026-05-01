@@ -12,7 +12,7 @@ RESUME_URL="https://dl.fbaipublicfiles.com/detr/detr-r50-e632da11.pth"
 
 # Training parameters
 EPOCHS=36
-BATCH_SIZE=8
+BATCH_SIZE=4
 NUM_WORKERS=10
 LR=1e-5
 LR_BACKBONE=1e-6
@@ -24,7 +24,7 @@ DEC_LAYERS=6
 # Superpixel-guided pruning
 SLIC_N_SEGMENTS=200
 PIXEL_PRUNE_KEEP_RATIO="0.8"  # fraction of pixel tokens to keep (clamped to [0.6, 0.8])
-PIXEL_PRUNE_WARMUP_EPOCHS=10  # train N epochs with full context before enabling pruning
+PIXEL_PRUNE_WARMUP_EPOCHS=6  # train N epochs with full context before enabling pruning
 
 # Score mode determines HOW pixels are ranked for pruning:
 #   feature_norm  — L2 norm of backbone features (fast, no extra compute)
@@ -32,16 +32,10 @@ PIXEL_PRUNE_WARMUP_EPOCHS=10  # train N epochs with full context before enabling
 #                   cues + texture gradients + superpixel size (uses W_* weights below)
 #   counts        — raw superpixel pixel counts (simplest)
 PIXEL_PRUNE_SCORE_MODE="saliency"
-
-# Saliency weights (only used when PIXEL_PRUNE_SCORE_MODE="saliency")
 PIXEL_PRUNE_W_FEATURE="0.50"
 PIXEL_PRUNE_W_COLOR="0.20"
 PIXEL_PRUNE_W_TEXTURE="0.20"
 PIXEL_PRUNE_W_SIZE="0.10"
-
-# Mixed precision (AMP)
-USE_AMP=true
-AMP_DTYPE="fp16"   # fp16 | bf16
 
 # Print config
 echo "DETR-HYBRID-V2 Training"
@@ -56,7 +50,6 @@ echo "Pixel prune: keep_ratio=$PIXEL_PRUNE_KEEP_RATIO  score_mode=$PIXEL_PRUNE_S
 if [[ "$PIXEL_PRUNE_SCORE_MODE" == "saliency" ]]; then
     echo "  Saliency weights: feature=$PIXEL_PRUNE_W_FEATURE color=$PIXEL_PRUNE_W_COLOR texture=$PIXEL_PRUNE_W_TEXTURE size=$PIXEL_PRUNE_W_SIZE"
 fi
-echo "AMP: $USE_AMP ($AMP_DTYPE)"
 echo ""
 
 # Build command
@@ -78,7 +71,6 @@ CMD=(
     --pixel_prune_score_mode "$PIXEL_PRUNE_SCORE_MODE"
     --pixel_prune_warmup_epochs $PIXEL_PRUNE_WARMUP_EPOCHS
     --eff_timing
-    --amp_dtype "$AMP_DTYPE"
     --resume "$RESUME_URL"
     --no_aux_loss
 )
@@ -91,11 +83,6 @@ if [[ "$PIXEL_PRUNE_SCORE_MODE" == "saliency" ]]; then
         --pixel_prune_w_texture "$PIXEL_PRUNE_W_TEXTURE"
         --pixel_prune_w_size "$PIXEL_PRUNE_W_SIZE"
     )
-fi
-
-# AMP flag
-if [[ "$USE_AMP" == "true" ]]; then
-    CMD+=(--amp)
 fi
 
 nohup "${CMD[@]}" > train.log 2>&1 &

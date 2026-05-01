@@ -46,6 +46,28 @@ def _move_target_to_device(value, device):
     return value
 
 
+def _move_target_tensor_only(target, device):
+    moved = {}
+    for k, v in target.items():
+        if torch.is_tensor(v):
+            moved[k] = v.to(device, non_blocking=True)
+        else:
+            moved[k] = v
+    return moved
+
+
+def _unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
+    return model.module if hasattr(model, 'module') else model
+
+
+def _needs_superpixel_inputs(model: torch.nn.Module) -> bool:
+    m = _unwrap_model(model)
+    mode = getattr(m, 'hybrid_token_mode', 'mixed')
+    if mode == 'superpixel':
+        return True
+    return bool(getattr(m, 'pixel_prune', False) and mode == 'mixed')
+
+
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, max_norm: float = 0,
@@ -72,7 +94,11 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
     for samples, targets in pbar:
         samples = samples.to(device)
-        targets = [_move_target_to_device(t, device) for t in targets]
+        need_superpixel_inputs = _needs_superpixel_inputs(model)
+        if need_superpixel_inputs:
+            targets = [_move_target_to_device(t, device) for t in targets]
+        else:
+            targets = [_move_target_tensor_only(t, device) for t in targets]
 
         iter_start = time.perf_counter() if eff_timing else None
         if eff_timing and eff_timing_sync_cuda and torch.cuda.is_available():
@@ -83,7 +109,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         else:
             autocast_ctx = _cuda_autocast(enabled=use_amp, dtype=autocast_dtype)
         with autocast_ctx:
-            outputs = model(samples, targets)
+            outputs = model(samples, targets) if need_superpixel_inputs else model(samples)
         if eff_timing and eff_timing_sync_cuda and torch.cuda.is_available():
             torch.cuda.synchronize()
         if eff_timing:
@@ -190,7 +216,11 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
 
     for samples, targets in pbar:
         samples = samples.to(device)
-        targets = [_move_target_to_device(t, device) for t in targets]
+        need_superpixel_inputs = _needs_superpixel_inputs(model)
+        if need_superpixel_inputs:
+            targets = [_move_target_to_device(t, device) for t in targets]
+        else:
+            targets = [_move_target_tensor_only(t, device) for t in targets]
 
         if eff_timing and eff_timing_sync_cuda and torch.cuda.is_available():
             torch.cuda.synchronize()
@@ -200,7 +230,7 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
         else:
             autocast_ctx = _cuda_autocast(enabled=use_amp, dtype=autocast_dtype)
         with autocast_ctx:
-            outputs = model(samples, targets)
+            outputs = model(samples, targets) if need_superpixel_inputs else model(samples)
         if eff_timing and eff_timing_sync_cuda and torch.cuda.is_available():
             torch.cuda.synchronize()
         if eff_timing:

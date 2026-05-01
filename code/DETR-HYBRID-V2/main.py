@@ -163,7 +163,7 @@ def main(args):
 
     device = torch.device(args.device)
 
-    # Performance knobs (safe defaults for modern NVIDIA GPUs like RTX 5090)
+    # Performance knobs
     if device.type == 'cuda':
         try:
             torch.backends.cuda.matmul.allow_tf32 = True
@@ -215,6 +215,16 @@ def main(args):
 
     dataset_train = build_dataset(image_set='train', args=args)
     dataset_val = build_dataset(image_set='val', args=args)
+
+    def _needs_superpixel_inputs_for_model(m) -> bool:
+        mode = getattr(m, 'hybrid_token_mode', 'mixed')
+        if mode == 'superpixel':
+            return True
+        return bool(getattr(m, 'pixel_prune', False) and mode == 'mixed')
+
+    def _set_dataset_superpixel_loading(ds, enabled: bool):
+        if hasattr(ds, 'set_superpixel_loading'):
+            ds.set_superpixel_loading(enabled)
 
     if args.distributed:
         sampler_train = DistributedSampler(dataset_train)
@@ -270,6 +280,7 @@ def main(args):
             args.start_epoch = checkpoint['epoch'] + 1
 
     if args.eval:
+        _set_dataset_superpixel_loading(dataset_val, _needs_superpixel_inputs_for_model(model_without_ddp))
         test_stats, coco_evaluator = evaluate(
             model,
             criterion,
@@ -401,6 +412,10 @@ def main(args):
                 if epoch == warmup:
                     print(f"Epoch {epoch}: Pruning ENABLED (warmup complete, keep_ratio={m.pixel_prune_keep_ratio})")
 
+        need_superpixel_inputs = _needs_superpixel_inputs_for_model(model_without_ddp)
+        _set_dataset_superpixel_loading(dataset_train, need_superpixel_inputs)
+        _set_dataset_superpixel_loading(dataset_val, need_superpixel_inputs)
+
         # Training with timing
         epoch_train_start = time.time()
         train_stats = train_one_epoch(
@@ -503,6 +518,7 @@ def main(args):
         print("\nRunning test set evaluation...")
         try:
             dataset_test = build_dataset(image_set='test', args=args)
+            _set_dataset_superpixel_loading(dataset_test, _needs_superpixel_inputs_for_model(model_without_ddp))
             if args.distributed:
                 sampler_test = DistributedSampler(dataset_test, shuffle=False)
             else:
