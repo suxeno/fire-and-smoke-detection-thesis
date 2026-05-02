@@ -385,6 +385,9 @@ class ReportGeneratorHybrid:
 
 
 def main():
+    # Usage Template:
+    # python3 code/DETR-HYBRID-V2/util/report_generator.py --output_dir code/DETR-HYBRID-V2/outputs --experiment_name "2-withwarmingepoch"
+
     parser = argparse.ArgumentParser(
         description='Generate comprehensive Excel reports for DETR-HYBRID-V2 model results'
     )

@@ -334,6 +334,9 @@ class ReportGenerator:
 
 
 def main():
+    # Usage Template:
+    # python3 code/DETR/util/report_generator.py --output_dir code/DETR/outputs --experiment_name "Pretrained-2"
+
     parser = argparse.ArgumentParser(
         description='Generate comprehensive Excel reports for DETR model results'
     )

@@ -1,0 +1,64 @@
+============================================================
+EXPERIMENT INFO
+============================================================
+
+--- Timestamp ---
+Started: 2026-04-29 16:06:15
+
+--- Dataset ---
+COCO Path: /root/datasets/FASDD/FASDD_CV
+Train samples: 47660
+Val samples: 31770
+
+--- Model Architecture ---
+Backbone: resnet50
+Encoder layers: 6
+Decoder layers: 6
+Hidden dim: 256
+Feedforward dim: 2048
+Num heads: 8
+Num queries: 100
+Dropout: 0.1
+Dilation: False
+Position embedding: sine
+Auxiliary loss: False
+Masks (segmentation): False
+Superpixel segments: 200
+Require superpixel files: True
+Pixel prune enabled: True
+Pixel prune keep ratio: 0.8
+Pixel prune score mode: saliency
+Pixel prune warmup epochs: 6
+Saliency weights (feature/color/texture/size): 0.5/0.2/0.2/0.1
+Efficiency timing enabled: True
+Total parameters: 41,279,495
+
+--- Training Config ---
+Epochs: 36
+Start epoch: 0
+Batch size: 4
+Learning rate: 1e-05
+LR backbone: 1e-06
+LR drop: 200
+Weight decay: 0.0001
+Clip max norm: 0.1
+
+--- Loss Coefficients ---
+Class cost: 1
+BBox cost: 5
+GIoU cost: 2
+BBox loss coef: 5
+GIoU loss coef: 2
+EOS coef: 0.1
+
+--- Environment ---
+Device: cuda
+Seed: 42
+Num workers: 10
+Distributed: False
+Resume from: https://dl.fbaipublicfiles.com/detr/detr-r50-e632da11.pth
+Output dir: ./outputs/2-withwarmingepoch/
+
+--- Git Info ---
+sha: f24017550e048da9c384a3cc119b08f2815a1d3e, status: has uncommited changes, branch: main
+============================================================

@@ -54,22 +54,18 @@ env/
 
 # PyTorch / Deep Learning
 # Model checkpoints - ignore ALL .pth files in outputs
-outputs/**/*.pth
+**/outputs/**/*.pth
 
-# TensorBoard logs
-outputs/*/runs/
-outputs/*/tensorboard/
+# Do NOT ignore any files in outputs directories except .pth files
+!**/outputs/
+!**/outputs/**
+**/outputs/**/*.pth
+
+# TensorBoard logs (outside outputs)
 runs/
 tensorboard/
 **/runs/
 **/tensorboard/
-**/outputs/**
-!**/outputs/**/
-!**/outputs/**/*.json
-!**/outputs/**/*.png
-!**/outputs/**/*.jpg
-!**/outputs/**/*.jpeg
-!**/outputs/**/*.pdf
 
 # Weights & Biases
 wandb/

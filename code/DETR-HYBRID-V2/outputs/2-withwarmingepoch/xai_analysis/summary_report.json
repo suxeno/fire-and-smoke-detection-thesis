@@ -1,19 +1,8 @@
 {
-  "analysis_timestamp": "2026-05-01T23:54:39.714751",
-  "model_variant": "DETR-HYBRID-V2",
-  "analysis_mode": "metrics-only",
-  "total_epochs": 36,
-  "pruning_analysis": {
-    "final_pixel_keep_ratio": 0.8003823177220522,
-    "avg_pixel_keep_ratio": 0.8336519314350436
-  },
-  "efficiency_metrics": {
-    "final_forward_time_ms": 68.4136449671303,
-    "min_forward_time_ms": 61.306571603924915
-  },
-  "accuracy_metrics": {
-    "final_mAP": 0.3735325775997274,
-    "final_AP_fire": 0.30523728042052334,
-    "final_AP_smoke": 0.44182787477893154
+  "timestamp": "2026-05-02T01:48:00.324730",
+  "final_metrics": {
+    "mAP": 0.3735325775997274,
+    "keep_ratio": 0.8003823177220522,
+    "latency_ms": 68.4136449671303
   }
 }
