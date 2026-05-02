@@ -596,7 +596,7 @@ class DETRHybridXAI:
                 
         return selected
 
-    def run_analysis(self, num_samples_per_cat: int = 1, seed: Optional[int] = None):
+    def run_analysis(self, num_samples_per_cat: int = 1, seed: Optional[int] = None, force: bool = False):
         """Main entry point for analysis."""
         output_path = self.output_dir / 'xai_analysis'
         output_path.mkdir(parents=True, exist_ok=True)
@@ -609,14 +609,25 @@ class DETRHybridXAI:
         print("Extracting metrics...")
         metrics = self.extract_pruning_metrics()
         
-        # 2. Scientific Plots
-        print("Generating scientific plots...")
-        self.generate_scientific_plots(metrics, output_path)
-        self.generate_feature_importance_visuals(output_path)
+        # 2. Scientific Plots (Skip if they exist and not forced)
+        main_plots = [
+            output_path / 'pruning_effectiveness_analysis.png',
+            output_path / 'efficiency_vs_accuracy.png',
+            output_path / 'feature_importance' / 'feature_importance_breakdown.png'
+        ]
+        
+        plots_exist = all(p.exists() for p in main_plots)
+        
+        if plots_exist and not force:
+            print("✓ Global scientific plots already exist. Skipping... (use --force to regenerate)")
+        else:
+            print("Generating scientific plots...")
+            self.generate_scientific_plots(metrics, output_path)
+            self.generate_feature_importance_visuals(output_path)
         
         # 3. Sample Visualizations (if model and dataset available)
         if self.model and self.dataset_root:
-            print("Identifying diverse sample images...")
+            print("\nIdentifying diverse sample images...")
             sample_images = self._get_diverse_samples(num_per_cat=num_samples_per_cat, seed=seed)
             print(f"✓ Selected samples: {', '.join(sample_images)}")
             
@@ -625,7 +636,8 @@ class DETRHybridXAI:
             self.plot_attention_samples(sample_images, output_path)
         
         # 4. Summary Report
-        self._save_summary(metrics, output_path)
+        if not (output_path / 'summary_report.json').exists() or force:
+            self._save_summary(metrics, output_path)
         
         print(f"\nAnalysis complete. Results saved to: {output_path}")
 
@@ -672,10 +684,11 @@ def main():
                         help='Number of random images to pick per category (Fire, Smoke, Both)')
     parser.add_argument('--seed', type=int, default=None, 
                         help='Seed for random sampling. Leave empty for true randomness each run.')
+    parser.add_argument('--force', action='store_true', help='Force regeneration of all plots even if they exist.')
     args = parser.parse_args()
     
     analyzer = DETRHybridXAI(args.output_dir, args.device, args.model_path, args.dataset_root)
-    analyzer.run_analysis(num_samples_per_cat=args.num_samples_per_cat, seed=args.seed)
+    analyzer.run_analysis(num_samples_per_cat=args.num_samples_per_cat, seed=args.seed, force=args.force)
 
 
 if __name__ == '__main__':
