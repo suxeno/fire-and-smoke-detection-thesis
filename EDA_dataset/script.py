@@ -11,7 +11,7 @@ import multiprocessing
 # --- CONFIGURATION ---
 IMG_DIR = "/home/master/Documents/TA/datasets/images/CV"
 ANN_DIR = "/home/master/Documents/TA/datasets/annotations/YOLO/labels"
-SAVE_DIR = "./eda_results"
+SAVE_DIR = "./results"
 CLASS_NAMES = {0: "Fire", 1: "Smoke"}
 
 # Set this to True if you want to force the script to run even if files exist
@@ -119,8 +119,13 @@ def run_fast_eda():
     # Plot 0: Folder Dist
     plt.figure(figsize=(12, 6))
     order = img_df['category'].value_counts().index
-    ax = sns.countplot(data=img_df, y='category', order=order, palette='viridis')
-    ax.bar_label(ax.containers[0], padding=3)
+    # FIX: Added hue='category' and legend=False to satisfy the new Seaborn requirements
+    ax = sns.countplot(data=img_df, y='category', order=order, hue='category', palette='viridis', legend=False)
+    
+    # FIX: Loop through all containers to label every bar
+    for container in ax.containers:
+        ax.bar_label(container, padding=3)
+        
     plt.title("Image distribution by Class")
     plt.tight_layout()
     plt.savefig(f"{SAVE_DIR}/0_folder_distribution.png")
@@ -128,8 +133,13 @@ def run_fast_eda():
     if not obj_df.empty:
         # Plot 1: Object Dist
         plt.figure(figsize=(10, 5))
-        ax = sns.countplot(data=obj_df, x='obj_class', palette='flare')
-        ax.bar_label(ax.containers[0], padding=3)
+        # FIX: Added hue='obj_class' and legend=False
+        ax = sns.countplot(data=obj_df, x='obj_class', hue='obj_class', palette='flare', legend=False)
+        
+        # FIX: Loop through all containers to label every bar
+        for container in ax.containers:
+            ax.bar_label(container, padding=3)
+            
         plt.title("Object Instance Distribution")
         plt.savefig(f"{SAVE_DIR}/1_object_distribution.png")
 
