@@ -119,15 +119,17 @@ def run_fast_eda():
     # Plot 0: Folder Dist
     plt.figure(figsize=(12, 6))
     order = img_df['category'].value_counts().index
-    sns.countplot(data=img_df, y='category', order=order, palette='viridis')
-    plt.title("Image Distribution by Folder")
+    ax = sns.countplot(data=img_df, y='category', order=order, palette='viridis')
+    ax.bar_label(ax.containers[0], padding=3)
+    plt.title("Image distribution by Class")
     plt.tight_layout()
     plt.savefig(f"{SAVE_DIR}/0_folder_distribution.png")
 
     if not obj_df.empty:
         # Plot 1: Object Dist
         plt.figure(figsize=(10, 5))
-        sns.countplot(data=obj_df, x='obj_class', palette='flare')
+        ax = sns.countplot(data=obj_df, x='obj_class', palette='flare')
+        ax.bar_label(ax.containers[0], padding=3)
         plt.title("Object Instance Distribution")
         plt.savefig(f"{SAVE_DIR}/1_object_distribution.png")
 
